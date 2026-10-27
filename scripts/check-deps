@@ -1,0 +1,26 @@
+#!/bin/sh
+# SPDX-License-Identifier: BSD-2-Clause
+#
+# Fail if the SDK module (go.mod at the repository root) requires any module
+# that CONTRIBUTING.md does not justify under "Runtime dependencies". The
+# policy is zero: the SDK uses only the standard library. The spectest/
+# module (test-only, never imported by the SDK) is not checked.
+set -eu
+root=$(cd "$(dirname "$0")/.." && pwd)
+cd "$root"
+
+deps=$(go list -m -f '{{if not .Main}}{{.Path}}{{end}}' all)
+if [ -z "$deps" ]; then
+	echo "check-deps: go.mod requires no modules (standard library only)"
+	exit 0
+fi
+
+status=0
+for dep in $deps; do
+	if ! grep -q -- "^- \`$dep\`" CONTRIBUTING.md; then
+		echo "check-deps: $dep is required by go.mod but has no justification line in CONTRIBUTING.md" >&2
+		status=1
+	fi
+done
+[ $status -eq 0 ] && echo "check-deps: every dependency is justified in CONTRIBUTING.md"
+exit $status

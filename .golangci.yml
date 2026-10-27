@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: BSD-2-Clause
+# golangci-lint v2. CI runs the version pinned in CONTRIBUTING.md.
+version: "2"
+linters:
+  # The standard set (errcheck, govet, ineffassign, staticcheck, unused),
+  # plus revive (style), gosec (security) and errorlint (error wrapping).
+  default: standard
+  enable:
+    - revive
+    - gosec
+    - errorlint
+    - misspell
+  settings:
+    revive:
+      # revive's recommended rule set (the golint successor), plus a few
+      # stricter rules.
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: empty-block
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: exported
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: superfluous-else
+        - name: time-naming
+        - name: unexported-return
+        - name: unreachable-code
+        - name: unused-parameter
+        - name: var-declaration
+        - name: var-naming
+        - name: early-return
+        - name: unnecessary-stmt
+        - name: use-any
+    misspell:
+      # No locale: the docs use British spellings, as does the API ("licence").
+      ignore-rules: []
+  exclusions:
+    rules:
+      # Tests and the test stub read fixture files by computed path.
+      - path: (_test\.go|internal/stub/)
+        linters: [gosec]
+        text: "G304"
+formatters:
+  enable:
+    - gofmt
