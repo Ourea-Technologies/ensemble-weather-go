@@ -1,0 +1,82 @@
+# SPDX-License-Identifier: BSD-2-Clause
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOLANGCI_LINT: github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
+  STATICCHECK: honnef.co/go/tools/cmd/staticcheck@v0.8.2
+  GOTOOLCHAIN: local
+
+jobs:
+  spec:
+    name: Spec pin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: spec/ matches the ref in spec/VERSION
+        run: scripts/sync-spec --check
+
+  lint:
+    name: Format, lint, docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+          cache-dependency-path: spectest/go.sum
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then echo "$unformatted"; exit 1; fi
+      - name: go vet
+        run: go vet ./... && (cd spectest && go vet ./...)
+      - name: staticcheck
+        run: go run "$STATICCHECK" -checks all ./... && (cd spectest && go run "$STATICCHECK" -checks all ./...)
+      - name: golangci-lint (standard + revive, gosec, errorlint, misspell)
+        run: go run "$GOLANGCI_LINT" run ./... && (cd spectest && go run "$GOLANGCI_LINT" run --config ../.golangci.yml ./...)
+      - name: No unjustified dependencies
+        run: scripts/check-deps
+      - name: Docs render
+        run: go doc -all . > /dev/null
+
+  test:
+    name: Test (Go ${{ matrix.go }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Go 1.22 (the minimum) and the two latest releases.
+        go: ["1.22.x", oldstable, stable]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ matrix.go }}
+          cache-dependency-path: spectest/go.sum
+      - name: Unit tests, the shared vectors and the examples (against the local stub)
+        run: go test -race -count=1 -coverprofile=coverage.out ./...
+      - name: Coverage
+        run: go tool cover -func=coverage.out | tail -1 | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Spec drift
+        working-directory: spectest
+        run: go test -count=1 ./...
+      - name: Build
+        run: go build ./...

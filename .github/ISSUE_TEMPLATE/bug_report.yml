@@ -1,0 +1,36 @@
+name: Bug report
+description: Something in the Go SDK does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security problems: please report them privately instead (see SECURITY.md).
+        Never paste an API key into an issue.
+  - type: input
+    id: version
+    attributes:
+      label: SDK version
+      description: The value of `ensembleweather.Version`, or the version in your go.mod.
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: go
+    attributes:
+      label: Go version and OS
+      placeholder: go1.23.4 linux/amd64
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: The call you made, what you expected, and what you got (the error's Code and RequestID help).
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: A minimal program that shows it
+      render: go

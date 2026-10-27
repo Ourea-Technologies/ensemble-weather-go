@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://docs.oureawx.com/go
+    about: Guides for the Go SDK and the Ourea API.
+  - name: Ourea
+    url: https://oureawx.com
+    about: Plans, pricing and support.
+  - name: Report a security vulnerability
+    url: https://github.com/Ourea-Technologies/ensemble-weather-go/security/advisories/new
+    about: Report privately; never in a public issue.
