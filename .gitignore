@@ -1,0 +1,6 @@
+# Private scratch space for local work (never committed).
+/.scratch/
+# Test and coverage output.
+*.out
+*.test
+/coverage.*
