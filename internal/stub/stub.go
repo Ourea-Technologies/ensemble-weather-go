@@ -67,7 +67,7 @@ func serve(w http.ResponseWriter, r *http.Request) {
 		lat, _ := strconv.ParseFloat(q.Get("lat"), 64)
 		lon, _ := strconv.ParseFloat(q.Get("lon"), 64)
 		if lon > -60 || lat < 20 {
-			writeError(w, 400, "OUTSIDE_COVERAGE", fmt.Sprintf("%s,%s is outside the forecast domain (CONUS).", q.Get("lat"), q.Get("lon")))
+			writeError(w, 404, "OUTSIDE_COVERAGE", fmt.Sprintf("%s,%s is outside the forecast domain (CONUS).", q.Get("lat"), q.Get("lon")))
 			return
 		}
 		write(w, r, keyed, forecast(q))
@@ -149,10 +149,10 @@ func probability(term string, i int) map[string]any {
 		agg = f[4]
 	}
 	return map[string]any{
-		"variable": f[0], "op": f[1], "threshold": threshold, "aggregation": agg,
+		"term": term, "variable": f[0], "op": f[1], "threshold": threshold, "aggregation": agg,
 		"window_start_hours": start, "window_end_hours": end,
 		"from": origin.Add(time.Duration(start) * time.Hour), "to": origin.Add(time.Duration(end) * time.Hour),
-		"probability": []float64{0.42, 0.17, 0.08, 0.63}[i%4], "members": 131,
+		"probability": []float64{0.42, 0.17, 0.08, 0.63}[i%4], "members": 131, "null_reason": nil,
 	}
 }
 
@@ -160,10 +160,11 @@ func total(term string) map[string]any {
 	v, w, _ := strings.Cut(term, ":")
 	start, end := window(w)
 	return map[string]any{
-		"variable": v, "window_start_hours": start, "window_end_hours": end,
+		"term": term, "variable": v, "window_start_hours": start, "window_end_hours": end, "aggregation": "total",
 		"from": origin.Add(time.Duration(start) * time.Hour), "to": origin.Add(time.Duration(end) * time.Hour),
-		"quantiles": map[string]any{"mean": 31.0, "p10": 12.0, "p25": 20.0, "p50": 29.0, "p75": 40.0, "p90": 52.0, "min": 4.0, "max": 88.0},
-		"members":   131,
+		"quantiles":   map[string]any{"mean": 31.0, "p10": 12.0, "p25": 20.0, "p50": 29.0, "p75": 40.0, "p90": 52.0, "min": 4.0, "max": 88.0},
+		"members":     131,
+		"null_reason": nil,
 	}
 }
 
@@ -197,7 +198,10 @@ func writeError(w http.ResponseWriter, status int, code, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-Request-Id", "stub-request")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": code, "message": msg})
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"error": code, "message": msg, "request_id": "stub-request",
+		"doc_url": "https://docs.oureawx.com/features/errors/#" + strings.ToLower(code),
+	})
 }
 
 var stdoutMu sync.Mutex

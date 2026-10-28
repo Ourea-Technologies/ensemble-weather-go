@@ -46,12 +46,14 @@ const (
 // IsKnown reports whether o is a comparison this SDK knows.
 func (o Op) IsKnown() bool { return o == AtLeast || o == AtMost }
 
-// Aggregation says how a probability term combines the hours of its window.
+// Aggregation says how a probability term or a window total combines the
+// hours of its window.
 type Aggregation string
 
-// The aggregations. Precipitation and snowfall take only [AggregationTotal];
-// the other variables take [AggregationAny] (their default) or
-// [AggregationAll].
+// The aggregations. In a [Chance], precipitation and snowfall take only
+// [AggregationTotal]; the other variables take [AggregationAny] (their
+// default) or [AggregationAll]. [AggregationMin] and [AggregationMax] appear
+// only in a [WindowTotal] the server answered.
 const (
 	// AggregationTotal: the member's total over the window crosses the threshold.
 	AggregationTotal Aggregation = "total"
@@ -59,11 +61,19 @@ const (
 	AggregationAny Aggregation = "any"
 	// AggregationAll: every hour of the window crosses the threshold.
 	AggregationAll Aggregation = "all"
+	// AggregationMin: each member's lowest value over the window.
+	AggregationMin Aggregation = "min"
+	// AggregationMax: each member's highest value over the window.
+	AggregationMax Aggregation = "max"
 )
 
 // IsKnown reports whether a is an aggregation this SDK knows.
 func (a Aggregation) IsKnown() bool {
-	return a == AggregationTotal || a == AggregationAny || a == AggregationAll
+	switch a {
+	case AggregationTotal, AggregationAny, AggregationAll, AggregationMin, AggregationMax:
+		return true
+	}
+	return false
 }
 
 var aggregationOrder = map[Aggregation]int{AggregationTotal: 0, AggregationAny: 1, AggregationAll: 2}
@@ -167,10 +177,8 @@ type chanceTerm struct {
 	aggregation Aggregation // effective (never empty)
 }
 
-func (t chanceTerm) key() string {
-	return string(t.variable) + ":" + string(t.op) + ":" + t.text + ":" + t.window.String() + ":" + string(t.aggregation)
-}
-
+// wire is the term's canonical spelling: what the SDK sends and the server
+// echoes in ProbabilityResult.Term.
 func (t chanceTerm) wire() string {
 	s := string(t.variable) + ":" + string(t.op) + ":" + t.text + ":" + t.window.String()
 	if t.aggregation != defaultAggregation(t.variable) {
@@ -203,7 +211,7 @@ func prepareChance(op string, c Chance, units Units) (chanceTerm, error) {
 		agg = defaultAggregation(c.Variable)
 	}
 	switch {
-	case !agg.IsKnown():
+	case agg != AggregationTotal && agg != AggregationAny && agg != AggregationAll:
 		return chanceTerm{}, usageError(op, "chance: unknown aggregation %q", agg)
 	case c.Variable.isAmount() && agg != AggregationTotal:
 		return chanceTerm{}, usageError(op, "chance: %s takes only the total aggregation, not %q", c.Variable, agg)
@@ -232,8 +240,8 @@ func prepareChance(op string, c Chance, units Units) (chanceTerm, error) {
 	}, nil
 }
 
-// chanceQuery is the canonical prob= value plus the key of each caller term,
-// in the caller's order.
+// chanceQuery is the canonical prob= value plus the canonical term of each
+// caller term, in the caller's order.
 type chanceQuery struct {
 	value string
 	keys  []string
@@ -250,7 +258,7 @@ func buildChances(op string, cs []Chance, units Units) (chanceQuery, error) {
 		if err != nil {
 			return chanceQuery{}, err
 		}
-		keys[i] = t.key()
+		keys[i] = t.wire()
 		uniq[keys[i]] = t
 	}
 	terms := make([]chanceTerm, 0, len(uniq))
@@ -280,18 +288,9 @@ func buildChances(op string, cs []Chance, units Units) (chanceQuery, error) {
 	return chanceQuery{value: strings.Join(wire, ","), keys: keys}, nil
 }
 
-func resultKey(p ProbabilityResult, units Units) string {
-	agg := p.Aggregation
-	if agg == "" {
-		agg = defaultAggregation(p.Variable)
-	}
-	w := Window{p.WindowStartHours, p.WindowEndHours}
-	return string(p.Variable) + ":" + string(p.Op) + ":" + formatThreshold(p.Threshold, precision(p.Variable, units)) +
-		":" + w.String() + ":" + string(agg)
-}
-
-// mapChances reorders the server's answers (in canonical order) into the
-// caller's order, duplicates sharing one answer.
+// mapChances matches the server's answers to the caller's terms by their
+// echoed canonical term (never by position), in the caller's order,
+// duplicates sharing one answer.
 //
 // A response without any answers leaves Probabilities absent (nil), never
 // filled in; a response that answers some terms but not all is an error.
@@ -302,14 +301,14 @@ func mapChances(op string, q chanceQuery, results []ProbabilityResult, units Uni
 	byKey := make(map[string]ProbabilityResult, len(results))
 	for _, r := range results {
 		r.ThresholdUnit = units.For(r.Variable)
-		byKey[resultKey(r, units)] = r
+		byKey[r.Term] = r
 	}
 	out := make([]ProbabilityResult, len(q.keys))
 	for i, k := range q.keys {
 		r, ok := byKey[k]
 		if !ok {
 			return nil, &Error{Category: CategoryUnavailable, Operation: op, Status: 200,
-				Message: "the response has no answer for probability term " + strings.TrimSuffix(k, ":")}
+				Message: "the response has no answer for probability term " + k}
 		}
 		out[i] = r
 	}
@@ -367,7 +366,8 @@ func buildTotals(op string, ts []Total) (totalsQuery, error) {
 	return totalsQuery{value: strings.Join(wire, ","), keys: keys}, nil
 }
 
-// mapTotals reorders window totals into the caller's order, as mapChances.
+// mapTotals matches window totals to the caller's terms by their echoed
+// canonical term, as mapChances.
 func mapTotals(op string, q totalsQuery, results []WindowTotal, units Units) ([]WindowTotal, error) {
 	if len(q.keys) == 0 || len(results) == 0 {
 		return results, nil
@@ -375,7 +375,7 @@ func mapTotals(op string, q totalsQuery, results []WindowTotal, units Units) ([]
 	byKey := make(map[string]WindowTotal, len(results))
 	for _, r := range results {
 		r.Unit = units.For(r.Variable)
-		byKey[totalTerm{r.Variable, Window{r.WindowStartHours, r.WindowEndHours}}.key()] = r
+		byKey[r.Term] = r
 	}
 	out := make([]WindowTotal, len(q.keys))
 	for i, k := range q.keys {

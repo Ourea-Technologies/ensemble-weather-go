@@ -29,9 +29,9 @@
 //
 // Every failed call returns an *[Error]. Test its category with errors.Is and a
 // sentinel ([ErrNotFound], [ErrRateLimited], ...), and read its Status, Code,
-// Message, RequestID and RetryAfter with errors.As. Connection errors, 429,
-// 502, 503 and 504 are retried (2 retries by default) with full-jitter
-// backoff, honouring Retry-After up to 60 s.
+// Message, RequestID, DocURL and RetryAfter with errors.As. Connection errors,
+// 429, 502, 503 and 504 are retried (2 retries by default) with full-jitter
+// backoff, honouring Retry-After (on 429, 503 and 504) up to 60 s.
 //
 // # Caching
 //

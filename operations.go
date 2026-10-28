@@ -4,7 +4,6 @@ package ensembleweather
 
 import (
 	"context"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -26,8 +25,6 @@ var (
 	opCatalogStations  = operation{id: "listCatalogStations"}
 	opCatalogStation   = operation{id: "getCatalogStation", open: true}
 	opRuns             = operation{id: "getAvailableRuns"}
-	opStormReports     = operation{id: "getStormReports"}
-	opStormReport      = operation{id: "getStormReport"}
 	opAttribution      = operation{id: "getAttribution", open: true}
 )
 
@@ -95,9 +92,12 @@ type ForecastParams struct {
 	Chances []Chance
 	// Totals are window totals, answered in WindowTotals in this order.
 	Totals []Total
-	// Diagnostics opts in to serve-path diagnostics, such as "provenance".
+	// Diagnostics opts in to serve-path diagnostics: "provenance".
 	Diagnostics []string
-	// FeelsLike selects feels-like indices (default "nws").
+	// Include opts in to extra forecast variables: "mslp" and
+	// "skin_temperature" (EnsembleStats.MSLP and SkinTemperature).
+	Include []string
+	// FeelsLike selects feels-like indices (default "nws", the only one).
 	FeelsLike []string
 }
 
@@ -137,6 +137,7 @@ func (c *Client) planForecast(op string, p *ForecastParams) (*forecastPlan, erro
 	q.literal("prob", plan.chances.value)
 	q.literal("totals", plan.totals.value)
 	q.list("diagnostics", p.Diagnostics)
+	q.sortedList("include", p.Include)
 	if len(p.FeelsLike) != 1 || p.FeelsLike[0] != "nws" {
 		q.list("feels_like", p.FeelsLike)
 	}
@@ -389,10 +390,10 @@ type CatalogLocationsParams struct {
 	Admin1 string
 	// Country is an ISO 3166-1 alpha-2 code, such as "US".
 	Country string
-	// Type is a catalog location type, such as "SkiArea".
-	Type string
-	// Template is a template variant, such as "Mountain".
-	Template string
+	// Type is a location type, such as LocationSkiArea.
+	Type LocationType
+	// Template is a template variant, such as TemplateMountain.
+	Template TemplateVariant
 	// Limit is the page size (1..100; default 20).
 	Limit int
 	// Cursor is the previous page's NextCursor.
@@ -407,8 +408,8 @@ func (c *Client) CatalogLocations(ctx context.Context, params *CatalogLocationsP
 	q := &query{}
 	q.str("admin1", params.Admin1)
 	q.str("country", params.Country)
-	q.str("type", params.Type)
-	q.str("template", params.Template)
+	q.str("type", string(params.Type))
+	q.str("template", string(params.Template))
 	q.intDefault("limit", params.Limit, 20)
 	q.str("cursor", params.Cursor)
 	var r CatalogLocationPage
@@ -420,7 +421,7 @@ func (c *Client) CatalogLocations(ctx context.Context, params *CatalogLocationsP
 
 // CatalogDetailParams select the extras of a catalog record.
 type CatalogDetailParams struct {
-	// Include opts in to "content", "template" and "ads".
+	// Include opts in to "content" and "template".
 	Include []string
 	// Locale is the BCP-47 locale for content (default "en").
 	Locale string
@@ -451,12 +452,12 @@ type CatalogStationsParams struct {
 	Admin1 string
 	// Country is an ISO 3166-1 alpha-2 code, such as "US".
 	Country string
-	// Networks filters by network, such as "Snotel".
-	Networks []string
-	// Capabilities lists capabilities a station must all have.
+	// Networks filters by network, such as NetworkSNOTEL (any of them).
+	Networks []StationNetwork
+	// Capabilities lists capabilities a station must all have, such as "swe".
 	Capabilities []string
-	// Status is a station status, such as "Active".
-	Status string
+	// Status is a station status, such as StationActive.
+	Status StationStatus
 	// Limit is the page size (1..100; default 20).
 	Limit int
 	// Cursor is the previous page's NextCursor.
@@ -471,11 +472,13 @@ func (c *Client) CatalogStations(ctx context.Context, params *CatalogStationsPar
 	q := &query{}
 	q.str("admin1", params.Admin1)
 	q.str("country", params.Country)
-	q.list("network", params.Networks)
-	for _, capability := range params.Capabilities {
-		q.str("capability", capability) // the one repeated parameter
+	networks := make([]string, len(params.Networks))
+	for i, n := range params.Networks {
+		networks[i] = string(n)
 	}
-	q.str("status", params.Status)
+	q.sortedList("network", networks)
+	q.sortedList("capability", params.Capabilities)
+	q.str("status", string(params.Status))
 	q.intDefault("limit", params.Limit, 20)
 	q.str("cursor", params.Cursor)
 	var r CatalogStationPage
@@ -502,27 +505,6 @@ func (c *Client) Runs(ctx context.Context, limit int) (*RunsResponse, error) {
 	q.intDefault("limit", limit, 10)
 	var r RunsResponse
 	if err := c.get(ctx, opRuns, []string{"runs"}, q, &r); err != nil {
-		return nil, err
-	}
-	return &r, nil
-}
-
-// StormReports returns recent storm verification reports. limit is the
-// maximum number (up to 100); 0 means the default, 20.
-func (c *Client) StormReports(ctx context.Context, limit int) (*StormReportsResponse, error) {
-	q := &query{}
-	q.intDefault("limit", limit, 20)
-	var r StormReportsResponse
-	if err := c.get(ctx, opStormReports, []string{"storm-reports"}, q, &r); err != nil {
-		return nil, err
-	}
-	return &r, nil
-}
-
-// StormReport returns one storm verification report.
-func (c *Client) StormReport(ctx context.Context, id int64) (*StormReport, error) {
-	var r StormReport
-	if err := c.get(ctx, opStormReport, []string{"storm-reports", strconv.FormatInt(id, 10)}, nil, &r); err != nil {
 		return nil, err
 	}
 	return &r, nil

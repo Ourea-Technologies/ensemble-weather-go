@@ -22,7 +22,7 @@ func main() {
 	var apiErr *ew.Error
 	switch {
 	case errors.As(err, &apiErr) && apiErr.Code == ew.CodeOutsideCoverage:
-		fmt.Printf("outside coverage: %s (status %d, request %s)\n", apiErr.Message, apiErr.Status, apiErr.RequestID)
+		fmt.Printf("outside coverage: %s (status %d, request %s; see %s)\n", apiErr.Message, apiErr.Status, apiErr.RequestID, apiErr.DocURL)
 	case errors.Is(err, ew.ErrPermission):
 		fmt.Println("coordinate forecasts need a Pro key:", err)
 	case errors.Is(err, ew.ErrRateLimited):

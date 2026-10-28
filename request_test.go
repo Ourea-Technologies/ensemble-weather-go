@@ -4,6 +4,7 @@ package ensembleweather
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -111,15 +112,17 @@ func TestFormatNumber(t *testing.T) {
 	}
 }
 
-func TestRepeatedCapability(t *testing.T) {
+func TestCatalogListsCanonical(t *testing.T) {
 	c, rt, _ := testClient(t, func(int, *http.Request) (*http.Response, error) {
 		return respond(200, `{"items":[],"next_cursor":null}`), nil
 	})
-	_, err := c.CatalogStations(context.Background(), &CatalogStationsParams{Capabilities: []string{"swe", "air_temp", "swe"}, Networks: []string{"Snotel", "Raws"}})
+	_, err := c.CatalogStations(context.Background(), &CatalogStationsParams{
+		Capabilities: []string{"swe", "air_temp", "swe"}, Networks: []StationNetwork{NetworkSNOTEL, NetworkRAWS, NetworkSNOTEL}, Status: StationActive,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := rt.last().URL.RawQuery, "capability=air_temp&capability=swe&network=Snotel%2CRaws"; got != want {
+	if got, want := rt.last().URL.RawQuery, "capability=air_temp%2Cswe&network=raws%2Csnotel&status=active"; got != want {
 		t.Errorf("query = %q, want %q", got, want)
 	}
 }
@@ -220,5 +223,29 @@ func TestBaseURLFromEnvironment(t *testing.T) {
 	_, _ = c.Attribution(context.Background())
 	if got := rt.last().URL.String(); got != "http://127.0.0.1:9/prefix/api/v1/attribution" {
 		t.Errorf("URL = %q", got)
+	}
+}
+
+func TestForecastIncludeCanonical(t *testing.T) {
+	c, rt, _ := testClient(t, okForecast)
+	_, err := c.Forecast(context.Background(), "or/x", &ForecastParams{Include: []string{"skin_temperature", "mslp", "mslp"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := rt.last().URL.RawQuery, "include=mslp%2Cskin_temperature"; got != want {
+		t.Errorf("query = %q, want %q", got, want)
+	}
+}
+
+func TestCoordinateLocationHasNoKey(t *testing.T) {
+	var f ForecastResponse
+	if err := json.Unmarshal([]byte(`{"location":{"slug":null,"type":null,"state":"or","name":"45.33, -121.71"}}`), &f); err != nil {
+		t.Fatal(err)
+	}
+	if f.Location.Slug != "" || f.Location.Type != "" || f.Location.Key() != "" {
+		t.Errorf("location = %+v, key %q", f.Location, f.Location.Key())
+	}
+	if got := (LocationRef{State: "or", Slug: "mt-hood-meadows"}).Key(); got != "or/mt-hood-meadows" {
+		t.Errorf("Key() = %q", got)
 	}
 }

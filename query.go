@@ -3,6 +3,7 @@
 package ensembleweather
 
 import (
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -46,8 +47,8 @@ type param struct {
 	keep        string // bytes sent literally (":," for prob and totals)
 }
 
-// query builds a canonical query string: each parameter at most once (except
-// a declared repeated one), none at its default, sorted by name.
+// query builds a canonical query string: each parameter at most once, none
+// at its default, sorted by name.
 type query struct {
 	params []param
 }
@@ -74,6 +75,17 @@ func (q *query) list(name string, values []string) {
 	if len(values) > 0 {
 		q.set(name, strings.Join(values, ","))
 	}
+}
+
+// sortedList sets a comma-joined list, sorted and de-duplicated (the
+// server's canonical form), unless it is empty.
+func (q *query) sortedList(name string, values []string) {
+	if len(values) == 0 {
+		return
+	}
+	vs := append([]string(nil), values...)
+	sort.Strings(vs)
+	q.list(name, slices.Compact(vs))
 }
 
 // intDefault sets an integer unless it is 0 (unset) or the route's default.
@@ -125,18 +137,10 @@ func (q *query) units(u Units) {
 
 func (q *query) encode() string {
 	ps := append([]param(nil), q.params...)
-	sort.SliceStable(ps, func(i, j int) bool {
-		if ps[i].name != ps[j].name {
-			return ps[i].name < ps[j].name
-		}
-		return ps[i].value < ps[j].value
-	})
+	sort.SliceStable(ps, func(i, j int) bool { return ps[i].name < ps[j].name })
 	var b strings.Builder
 	for i, p := range ps {
 		if i > 0 {
-			if ps[i-1] == p {
-				continue // a repeated parameter's duplicate value
-			}
 			b.WriteByte('&')
 		}
 		b.WriteString(escape(p.name, ""))

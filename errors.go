@@ -21,11 +21,12 @@ const (
 	// CategoryPermission: the key's plan does not allow the request (403),
 	// for example PRO_REQUIRED.
 	CategoryPermission
-	// CategoryNotFound: the location, run or report does not exist (404, 410).
+	// CategoryNotFound: the location or resource does not exist (404, 410).
 	CategoryNotFound
 	// CategoryInvalidRequest: the server rejected the request's parameters (400).
 	CategoryInvalidRequest
-	// CategoryOutsideCoverage: the coordinates are outside the forecast domain.
+	// CategoryOutsideCoverage: the coordinates are outside the forecast domain
+	// (OUTSIDE_COVERAGE, a 404).
 	CategoryOutsideCoverage
 	// CategoryRateLimited: a rate limit or quota was exceeded (429).
 	CategoryRateLimited
@@ -90,54 +91,45 @@ var sentinels = map[Category]error{
 // error response. Codes the SDK does not know are kept verbatim.
 type ErrorCode string
 
-// The error codes the SDK maps to a category. The API may add codes; an
-// unknown code keeps its string and is categorised by HTTP status.
+// The public API's error codes (the spec's ErrorResponse.error), each mapped
+// to a category. The API may add codes; an unknown code keeps its string and
+// is categorised by HTTP status.
 const (
-	CodeInvalidAPIKey        ErrorCode = "INVALID_API_KEY" //nolint:gosec // G101: an error code, not a credential
-	CodeUnauthorized         ErrorCode = "UNAUTHORIZED"
-	CodeProRequired          ErrorCode = "PRO_REQUIRED"
-	CodeForbidden            ErrorCode = "FORBIDDEN"
-	CodeLocationNotFound     ErrorCode = "LOCATION_NOT_FOUND"
-	CodeModelRunNotFound     ErrorCode = "MODEL_RUN_NOT_FOUND"
-	CodeNotFound             ErrorCode = "NOT_FOUND"
-	CodeGone                 ErrorCode = "GONE"
-	CodeBadRequest           ErrorCode = "BAD_REQUEST"
-	CodeInvalidCoordinates   ErrorCode = "INVALID_COORDINATES"
-	CodeInvalidElevation     ErrorCode = "INVALID_ELEVATION"
-	CodeInvalidMaxHours      ErrorCode = "INVALID_MAX_HOURS"
-	CodeElevationRequired    ErrorCode = "ELEVATION_REQUIRED"
-	CodeAmbiguous            ErrorCode = "AMBIGUOUS"
-	CodeFeelsLikeUnavailable ErrorCode = "FEELS_LIKE_UNAVAILABLE"
-	CodeOutsideCoverage      ErrorCode = "OUTSIDE_COVERAGE"
-	CodeTooManyRequests      ErrorCode = "TOO_MANY_REQUESTS"
-	CodeForecastUnavailable  ErrorCode = "FORECAST_UNAVAILABLE"
-	CodeTimeout              ErrorCode = "TIMEOUT"
-	CodeInternalError        ErrorCode = "INTERNAL_ERROR"
-	CodeDatabaseError        ErrorCode = "DATABASE_ERROR"
+	CodeInvalidAPIKey       ErrorCode = "INVALID_API_KEY" //nolint:gosec // G101: an error code, not a credential
+	CodeUnauthorized        ErrorCode = "UNAUTHORIZED"
+	CodeProRequired         ErrorCode = "PRO_REQUIRED"
+	CodeLocationNotFound    ErrorCode = "LOCATION_NOT_FOUND"
+	CodeNotFound            ErrorCode = "NOT_FOUND"
+	CodeBadRequest          ErrorCode = "BAD_REQUEST"
+	CodeInvalidCoordinates  ErrorCode = "INVALID_COORDINATES"
+	CodeInvalidElevation    ErrorCode = "INVALID_ELEVATION"
+	CodeElevationRequired   ErrorCode = "ELEVATION_REQUIRED"
+	CodeOutsideCoverage     ErrorCode = "OUTSIDE_COVERAGE"
+	CodeTooManyRequests     ErrorCode = "TOO_MANY_REQUESTS"
+	CodeForecastUnavailable ErrorCode = "FORECAST_UNAVAILABLE"
+	CodeTimeout             ErrorCode = "TIMEOUT"
+	CodeInternalError       ErrorCode = "INTERNAL_ERROR"
+	CodeDatabaseError       ErrorCode = "DATABASE_ERROR"
+	CodeAuthUnavailable     ErrorCode = "AUTH_UNAVAILABLE"
 )
 
 var codeCategories = map[ErrorCode]Category{
-	CodeInvalidAPIKey:        CategoryAuthentication,
-	CodeUnauthorized:         CategoryAuthentication,
-	CodeProRequired:          CategoryPermission,
-	CodeForbidden:            CategoryPermission,
-	CodeLocationNotFound:     CategoryNotFound,
-	CodeModelRunNotFound:     CategoryNotFound,
-	CodeNotFound:             CategoryNotFound,
-	CodeGone:                 CategoryNotFound,
-	CodeBadRequest:           CategoryInvalidRequest,
-	CodeInvalidCoordinates:   CategoryInvalidRequest,
-	CodeInvalidElevation:     CategoryInvalidRequest,
-	CodeInvalidMaxHours:      CategoryInvalidRequest,
-	CodeElevationRequired:    CategoryInvalidRequest,
-	CodeAmbiguous:            CategoryInvalidRequest,
-	CodeFeelsLikeUnavailable: CategoryInvalidRequest,
-	CodeOutsideCoverage:      CategoryOutsideCoverage,
-	CodeTooManyRequests:      CategoryRateLimited,
-	CodeForecastUnavailable:  CategoryUnavailable,
-	CodeTimeout:              CategoryUnavailable,
-	CodeInternalError:        CategoryUnavailable,
-	CodeDatabaseError:        CategoryUnavailable,
+	CodeInvalidAPIKey:       CategoryAuthentication,
+	CodeUnauthorized:        CategoryAuthentication,
+	CodeProRequired:         CategoryPermission,
+	CodeLocationNotFound:    CategoryNotFound,
+	CodeNotFound:            CategoryNotFound,
+	CodeBadRequest:          CategoryInvalidRequest,
+	CodeInvalidCoordinates:  CategoryInvalidRequest,
+	CodeInvalidElevation:    CategoryInvalidRequest,
+	CodeElevationRequired:   CategoryInvalidRequest,
+	CodeOutsideCoverage:     CategoryOutsideCoverage,
+	CodeTooManyRequests:     CategoryRateLimited,
+	CodeForecastUnavailable: CategoryUnavailable,
+	CodeTimeout:             CategoryUnavailable,
+	CodeInternalError:       CategoryUnavailable,
+	CodeDatabaseError:       CategoryUnavailable,
+	CodeAuthUnavailable:     CategoryUnavailable,
 }
 
 // categorize maps an error response to its category: by code first, then by
@@ -183,9 +175,18 @@ type Error struct {
 	Code ErrorCode
 	// Message is the human-readable explanation.
 	Message string
-	// RequestID is the response's X-Request-Id, when present.
+	// RequestID is the error body's request_id (else the response's
+	// X-Request-Id), when present. Quote it in a support request.
 	RequestID string
-	// RetryAfter is the server's Retry-After on a 429 or 503, or 0.
+	// DocURL links the code's explanation in the API docs, when present.
+	DocURL string
+	// Param names the query parameter a 400 is about, when it is about one.
+	Param string
+	// NearestLocation is, on a PRO_REQUIRED from a coordinate route, the
+	// nearby named location that answers without a key; nil when none
+	// qualifies.
+	NearestLocation *NearestLocation
+	// RetryAfter is the server's Retry-After on a 429, 503 or 504, or 0.
 	RetryAfter time.Duration
 	// RateLimit is the response's rate-limit state, when it carried one.
 	RateLimit *RateLimit
@@ -239,6 +240,18 @@ func (e *Error) Is(target error) bool {
 
 // Unwrap returns the underlying error of a connection error.
 func (e *Error) Unwrap() error { return e.Err }
+
+// NearestLocation is the named location a PRO_REQUIRED error suggests for a
+// coordinate request: within 10 km of the point and 300 m of its elevation.
+type NearestLocation struct {
+	Slug string `json:"slug"`
+	// URL is the location route's path on this API, such as
+	// "/api/v1/locations/or/mt-hood-meadows" (with "/current" or "/alerts"
+	// for those routes).
+	URL        string  `json:"url"`
+	DistanceKm float64 `json:"distance_km"`
+	ElevationM float64 `json:"elevation_m"`
+}
 
 func usageError(op, format string, args ...any) *Error {
 	return &Error{Category: CategoryUsage, Operation: op, Message: fmt.Sprintf(format, args...)}

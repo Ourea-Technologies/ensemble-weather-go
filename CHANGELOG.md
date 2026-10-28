@@ -7,6 +7,57 @@ independent of the API version; every 0.x release targets API contract v1.
 
 ## [Unreleased]
 
+Moves to the v1 contract as deployed (ensemble-weather-spec 8b85fea, the
+server's public spec byte for byte). Breaking, as 0.x allows.
+
+### Changed
+
+- `precip_*` fields are `precipitation_*`: `DailyForecast.TotalPrecipitation`,
+  `TotalPrecipitationIfWet`, `PrecipitationProbability`,
+  `PrecipitationOccurrenceProbability`, `PrecipitationType`,
+  `PrecipitationDisplay`; `TimeSeriesPoint.PrecipitationType`;
+  `CurrentConditions.PrecipitationProbability`;
+  `SensorObservation.PrecipitationRate`; and
+  `ProbabilityThresholds.DailyPrecipitationProbability` /
+  `DailyPrecipitationOccurrenceProbability`.
+- `EnsembleStats.WindDirection` and `ModelMean.WindDirection` are
+  `CircularStats` (mean, stddev, 50 % and 90 % sectors), not `Quantiles`.
+- Probabilities and window totals are matched to the caller's terms by the
+  `term` the server echoes, never by position. `ProbabilityResult` and
+  `WindowTotal` carry `Term` and `NullReason`; `WindowTotal` carries
+  `Aggregation` (new `AggregationMin` / `AggregationMax` values).
+- Error codes are the public spec's 16: `CodeAuthUnavailable` (unavailable)
+  is new; `CodeForbidden`, `CodeModelRunNotFound`, `CodeGone`,
+  `CodeInvalidMaxHours`, `CodeAmbiguous` and `CodeFeelsLikeUnavailable` are
+  gone (an old code still keeps its string and maps by status).
+  `OUTSIDE_COVERAGE` is a 404. `Retry-After` is honoured on 504 as well as
+  429 and 503.
+- `ActiveAlert.Severity` and `Urgency` are typed snake_case enums, and
+  catalog enums are snake_case and typed: `StationNetwork`, `StationStatus`,
+  `TemplateVariant`, `CatalogLocationsParams.Type` / `Template`,
+  `CatalogStationsParams.Networks` / `Status`. `network` and `capability`
+  are sent as one sorted, de-duplicated comma list (the server's canonical
+  form); `capability` is no longer repeated.
+- `LocationRef.Slug` and `Type` are empty for a coordinate forecast that
+  matched no named location (the server sends null), and `Key()` is then "".
+
+### Added
+
+- `ActiveAlert.Certainty`, `CurrentStation.StationID`,
+  `RunsResponse.NextCursor`, `ForecastParams.Include` (`mslp`,
+  `skin_temperature`), `ConditionIcon` and `NullReason` constants, and
+  `Error.DocURL`, `Error.Param` and `Error.NearestLocation`;
+  `Error.RequestID` is read from the body's `request_id` first.
+- A drift test that fails on any model field the spec does not have.
+
+### Removed
+
+- `StormReports`, `StormReport` and their models (not in the public spec).
+- Catalog ads (`CatalogAdSlot` and its placements; `include=ads`).
+- `EnsembleStats.FeelsLikeUTCI`, `Ptype` and `WindDirectionCircular`;
+  `DailyForecast.FeelsLikeUTCIHigh` / `Low`; `ElevationForecast.Default`
+  and `Timeseries` (`ElevationHour`).
+
 ## [0.1.0] - 2026-10-26
 
 ### Added

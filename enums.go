@@ -111,9 +111,62 @@ func (c Condition) IsKnown() bool {
 }
 
 // ConditionIcon is an icon hint for a condition, such as "night_snow" or
-// "sun_chance_showers". The API documents the full set; it is kept as a
-// string because front ends map it to their own artwork.
+// "sun_chance_showers". Front ends map it to their own artwork.
 type ConditionIcon string
+
+// The condition icons.
+const (
+	IconSunny                  ConditionIcon = "sunny"
+	IconMostlySunny            ConditionIcon = "mostly_sunny"
+	IconPartlyCloudy           ConditionIcon = "partly_cloudy"
+	IconMostlyCloudy           ConditionIcon = "mostly_cloudy"
+	IconCloudy                 ConditionIcon = "cloudy"
+	IconSunChanceShowers       ConditionIcon = "sun_chance_showers"
+	IconSunShowersLikely       ConditionIcon = "sun_showers_likely"
+	IconSunShowers             ConditionIcon = "sun_showers"
+	IconChanceShowers          ConditionIcon = "chance_showers"
+	IconChanceRain             ConditionIcon = "chance_rain"
+	IconShowersLikely          ConditionIcon = "showers_likely"
+	IconRainLikely             ConditionIcon = "rain_likely"
+	IconShowers                ConditionIcon = "showers"
+	IconLightRain              ConditionIcon = "light_rain"
+	IconRain                   ConditionIcon = "rain"
+	IconHeavyRain              ConditionIcon = "heavy_rain"
+	IconRainSnowMix            ConditionIcon = "rain_snow_mix"
+	IconSnow                   ConditionIcon = "snow"
+	IconFreezingRain           ConditionIcon = "freezing_rain"
+	IconNightClear             ConditionIcon = "night_clear"
+	IconNightMostlyClear       ConditionIcon = "night_mostly_clear"
+	IconNightPartlyCloudy      ConditionIcon = "night_partly_cloudy"
+	IconNightMostlyCloudy      ConditionIcon = "night_mostly_cloudy"
+	IconNightCloudy            ConditionIcon = "night_cloudy"
+	IconNightMoonChanceShowers ConditionIcon = "night_moon_chance_showers"
+	IconNightMoonShowersLikely ConditionIcon = "night_moon_showers_likely"
+	IconNightMoonShowers       ConditionIcon = "night_moon_showers"
+	IconNightChanceShowers     ConditionIcon = "night_chance_showers"
+	IconNightChanceRain        ConditionIcon = "night_chance_rain"
+	IconNightShowersLikely     ConditionIcon = "night_showers_likely"
+	IconNightRainLikely        ConditionIcon = "night_rain_likely"
+	IconNightShowers           ConditionIcon = "night_showers"
+	IconNightLightRain         ConditionIcon = "night_light_rain"
+	IconNightRain              ConditionIcon = "night_rain"
+	IconNightHeavyRain         ConditionIcon = "night_heavy_rain"
+	IconNightRainSnowMix       ConditionIcon = "night_rain_snow_mix"
+	IconNightSnow              ConditionIcon = "night_snow"
+	IconNightFreezingRain      ConditionIcon = "night_freezing_rain"
+)
+
+// IsKnown reports whether v is an icon this SDK knows.
+func (v ConditionIcon) IsKnown() bool {
+	return oneOf(v, IconSunny, IconMostlySunny, IconPartlyCloudy, IconMostlyCloudy, IconCloudy,
+		IconSunChanceShowers, IconSunShowersLikely, IconSunShowers, IconChanceShowers, IconChanceRain,
+		IconShowersLikely, IconRainLikely, IconShowers, IconLightRain, IconRain, IconHeavyRain,
+		IconRainSnowMix, IconSnow, IconFreezingRain, IconNightClear, IconNightMostlyClear,
+		IconNightPartlyCloudy, IconNightMostlyCloudy, IconNightCloudy, IconNightMoonChanceShowers,
+		IconNightMoonShowersLikely, IconNightMoonShowers, IconNightChanceShowers, IconNightChanceRain,
+		IconNightShowersLikely, IconNightRainLikely, IconNightShowers, IconNightLightRain, IconNightRain,
+		IconNightHeavyRain, IconNightRainSnowMix, IconNightSnow, IconNightFreezingRain)
+}
 
 // PrecipKind is a precipitation type.
 type PrecipKind string
@@ -347,29 +400,164 @@ func (k SectionKind) IsKnown() bool {
 	return oneOf(k, SectionWeatherPanel, SectionContentSlot, SectionAdSlot, SectionMedia)
 }
 
-// AdSlotKind says how a catalog ad slot is filled.
-type AdSlotKind string
+// AlertSeverity is an alert's CAP severity.
+type AlertSeverity string
 
-// The ad slot kinds.
+// The alert severities.
 const (
-	AdSlotHouse      AdSlotKind = "house"
-	AdSlotThirdParty AdSlotKind = "third_party"
+	SeverityExtreme  AlertSeverity = "extreme"
+	SeveritySevere   AlertSeverity = "severe"
+	SeverityModerate AlertSeverity = "moderate"
+	SeverityMinor    AlertSeverity = "minor"
+	SeverityUnknown  AlertSeverity = "unknown"
 )
 
-// IsKnown reports whether k is an ad slot kind this SDK knows.
-func (k AdSlotKind) IsKnown() bool { return oneOf(k, AdSlotHouse, AdSlotThirdParty) }
+// IsKnown reports whether v is a severity this SDK knows.
+func (v AlertSeverity) IsKnown() bool {
+	return oneOf(v, SeverityExtreme, SeveritySevere, SeverityModerate, SeverityMinor, SeverityUnknown)
+}
 
-// AdProvider is a third-party ad provider.
-type AdProvider string
+// AlertUrgency is an alert's CAP urgency.
+type AlertUrgency string
 
-// The third-party ad providers.
+// The alert urgencies.
 const (
-	AdProviderAdSense AdProvider = "adsense"
-	AdProviderGAM     AdProvider = "gam"
-	AdProviderCustom  AdProvider = "custom"
+	UrgencyImmediate AlertUrgency = "immediate"
+	UrgencyExpected  AlertUrgency = "expected"
+	UrgencyFuture    AlertUrgency = "future"
+	UrgencyPast      AlertUrgency = "past"
+	UrgencyUnknown   AlertUrgency = "unknown"
 )
 
-// IsKnown reports whether p is an ad provider this SDK knows.
-func (p AdProvider) IsKnown() bool {
-	return oneOf(p, AdProviderAdSense, AdProviderGAM, AdProviderCustom)
+// IsKnown reports whether v is an urgency this SDK knows.
+func (v AlertUrgency) IsKnown() bool {
+	return oneOf(v, UrgencyImmediate, UrgencyExpected, UrgencyFuture, UrgencyPast, UrgencyUnknown)
+}
+
+// AlertCertainty is an alert's CAP certainty.
+type AlertCertainty string
+
+// The alert certainties.
+const (
+	CertaintyObserved AlertCertainty = "observed"
+	CertaintyLikely   AlertCertainty = "likely"
+	CertaintyPossible AlertCertainty = "possible"
+	CertaintyUnlikely AlertCertainty = "unlikely"
+	CertaintyUnknown  AlertCertainty = "unknown"
+)
+
+// IsKnown reports whether v is a certainty this SDK knows.
+func (v AlertCertainty) IsKnown() bool {
+	return oneOf(v, CertaintyObserved, CertaintyLikely, CertaintyPossible, CertaintyUnlikely,
+		CertaintyUnknown)
+}
+
+// StationNetwork is an observation station's network, such as "snotel".
+type StationNetwork string
+
+// The station networks.
+const (
+	NetworkSNOTEL          StationNetwork = "snotel"
+	NetworkSnolite         StationNetwork = "snolite"
+	NetworkRAWS            StationNetwork = "raws"
+	NetworkASOS            StationNetwork = "asos"
+	NetworkAWOS            StationNetwork = "awos"
+	NetworkMETAR           StationNetwork = "metar"
+	NetworkRWISWSDOT       StationNetwork = "rwis_wsdot"
+	NetworkRWISODOT        StationNetwork = "rwis_odot"
+	NetworkRWISCaltrans    StationNetwork = "rwis_caltrans"
+	NetworkRWISIDOT        StationNetwork = "rwis_idot"
+	NetworkRWISNDOT        StationNetwork = "rwis_ndot"
+	NetworkRWISUDOT        StationNetwork = "rwis_udot"
+	NetworkRWISCDOT        StationNetwork = "rwis_cdot"
+	NetworkRWISMDT         StationNetwork = "rwis_mdt"
+	NetworkRWISWYDOT       StationNetwork = "rwis_wydot"
+	NetworkRWISOther       StationNetwork = "rwis_other"
+	NetworkAgrimet         StationNetwork = "agrimet"
+	NetworkAgweathernet    StationNetwork = "agweathernet"
+	NetworkCoCoRaHS        StationNetwork = "cocorahs"
+	NetworkCOOP            StationNetwork = "coop"
+	NetworkUSGS            StationNetwork = "usgs"
+	NetworkTempest         StationNetwork = "tempest"
+	NetworkDavis           StationNetwork = "davis"
+	NetworkWxflow          StationNetwork = "wxflow"
+	NetworkCDEC            StationNetwork = "cdec"
+	NetworkCIMIS           StationNetwork = "cimis"
+	NetworkMesonetOregon   StationNetwork = "mesonet_oregon"
+	NetworkMesonetSynoptic StationNetwork = "mesonet_synoptic"
+	NetworkMesonetOther    StationNetwork = "mesonet_other"
+	NetworkNDBCBuoy        StationNetwork = "ndbc_buoy"
+	NetworkOther           StationNetwork = "other"
+	NetworkHADS            StationNetwork = "hads"
+	NetworkMADIS           StationNetwork = "madis"
+	NetworkNWAC            StationNetwork = "nwac"
+	NetworkMTMesonet       StationNetwork = "mt_mesonet"
+)
+
+// IsKnown reports whether v is a network this SDK knows.
+func (v StationNetwork) IsKnown() bool {
+	return oneOf(v, NetworkSNOTEL, NetworkSnolite, NetworkRAWS, NetworkASOS, NetworkAWOS, NetworkMETAR,
+		NetworkRWISWSDOT, NetworkRWISODOT, NetworkRWISCaltrans, NetworkRWISIDOT, NetworkRWISNDOT,
+		NetworkRWISUDOT, NetworkRWISCDOT, NetworkRWISMDT, NetworkRWISWYDOT, NetworkRWISOther,
+		NetworkAgrimet, NetworkAgweathernet, NetworkCoCoRaHS, NetworkCOOP, NetworkUSGS, NetworkTempest,
+		NetworkDavis, NetworkWxflow, NetworkCDEC, NetworkCIMIS, NetworkMesonetOregon,
+		NetworkMesonetSynoptic, NetworkMesonetOther, NetworkNDBCBuoy, NetworkOther, NetworkHADS,
+		NetworkMADIS, NetworkNWAC, NetworkMTMesonet)
+}
+
+// StationStatus is an observation station's live-feed status.
+type StationStatus string
+
+// The station statuses.
+const (
+	StationActive         StationStatus = "active"
+	StationIntermittent   StationStatus = "intermittent"
+	StationInactive       StationStatus = "inactive"
+	StationDecommissioned StationStatus = "decommissioned"
+	StationUnknown        StationStatus = "unknown"
+)
+
+// IsKnown reports whether v is a status this SDK knows.
+func (v StationStatus) IsKnown() bool {
+	return oneOf(v, StationActive, StationIntermittent, StationInactive, StationDecommissioned,
+		StationUnknown)
+}
+
+// TemplateVariant is a catalog page template variant.
+type TemplateVariant string
+
+// The template variants.
+const (
+	TemplateMountain TemplateVariant = "mountain"
+	TemplateCoastal  TemplateVariant = "coastal"
+	TemplateTrail    TemplateVariant = "trail"
+	TemplatePass     TemplateVariant = "pass"
+	TemplateGeneric  TemplateVariant = "generic"
+	TemplateStation  TemplateVariant = "station"
+)
+
+// IsKnown reports whether v is a variant this SDK knows.
+func (v TemplateVariant) IsKnown() bool {
+	return oneOf(v, TemplateMountain, TemplateCoastal, TemplateTrail, TemplatePass, TemplateGeneric,
+		TemplateStation)
+}
+
+// NullReason says why the server could not answer a probability or window
+// total.
+type NullReason string
+
+// The reasons.
+const (
+	// NullWindowNotCovered: the served series does not reach the window's end.
+	NullWindowNotCovered NullReason = "window_not_covered"
+	// NullTooFewMembers: fewer than two members cover the whole window.
+	NullTooFewMembers NullReason = "too_few_members"
+	// NullVariableUnavailable: no member carries the variable through the
+	// window (for example with Hourly false, which serves no members).
+	NullVariableUnavailable NullReason = "variable_unavailable"
+)
+
+// IsKnown reports whether v is a reason this SDK knows.
+func (v NullReason) IsKnown() bool {
+	return oneOf(v, NullWindowNotCovered, NullTooFewMembers, NullVariableUnavailable)
 }

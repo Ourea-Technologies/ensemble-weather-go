@@ -53,6 +53,10 @@ func TestRetries(t *testing.T) {
 			func() (*http.Response, error) { return respond(503, "", "Retry-After", "7"), nil },
 			func() (*http.Response, error) { return respond(200, minimalForecast), nil },
 		}, nil, 2, []float64{7}},
+		{"504 Retry-After honoured", 2, []func() (*http.Response, error){
+			func() (*http.Response, error) { return respond(504, "", "Retry-After", "3"), nil },
+			func() (*http.Response, error) { return respond(200, minimalForecast), nil },
+		}, nil, 2, []float64{3}},
 		{"502 Retry-After ignored", 2, []func() (*http.Response, error){
 			func() (*http.Response, error) { return respond(502, "", "Retry-After", "7"), nil },
 			func() (*http.Response, error) { return respond(200, minimalForecast), nil },
@@ -111,11 +115,12 @@ func TestCategorize(t *testing.T) {
 	}{
 		{401, "", CategoryAuthentication}, {400, CodeUnauthorized, CategoryAuthentication},
 		{403, "", CategoryPermission}, {403, CodeProRequired, CategoryPermission},
-		{404, "", CategoryNotFound}, {410, "", CategoryNotFound}, {404, CodeModelRunNotFound, CategoryNotFound},
-		{400, "", CategoryInvalidRequest}, {400, CodeAmbiguous, CategoryInvalidRequest}, {422, "SOMETHING", CategoryInvalidRequest},
+		{404, "", CategoryNotFound}, {410, "", CategoryNotFound}, {404, CodeLocationNotFound, CategoryNotFound},
+		{400, "", CategoryInvalidRequest}, {400, CodeElevationRequired, CategoryInvalidRequest}, {422, "SOMETHING", CategoryInvalidRequest},
 		{400, CodeOutsideCoverage, CategoryOutsideCoverage}, {404, CodeOutsideCoverage, CategoryOutsideCoverage},
 		{429, "", CategoryRateLimited}, {500, "", CategoryUnavailable}, {504, CodeTimeout, CategoryUnavailable},
-		{400, CodeTooManyRequests, CategoryRateLimited},
+		{400, CodeTooManyRequests, CategoryRateLimited}, {503, CodeAuthUnavailable, CategoryUnavailable},
+		{403, "FORBIDDEN", CategoryPermission}, {410, "GONE", CategoryNotFound},
 	}
 	for _, tt := range tests {
 		if got := categorize(tt.status, tt.code); got != tt.want {
@@ -151,6 +156,30 @@ func TestErrorFields(t *testing.T) {
 	}
 	if want := "ensembleweather: getLocationForecast: 429 TOO_MANY_REQUESTS: slow down (request ID req-1)"; e.Error() != want {
 		t.Errorf("Error() = %q, want %q", e.Error(), want)
+	}
+}
+
+func TestErrorBodyFields(t *testing.T) {
+	c, _, _ := testClient(t, func(int, *http.Request) (*http.Response, error) {
+		return respond(403, `{"error":"PRO_REQUIRED","message":"pro","request_id":"body-id","doc_url":"https://docs.oureawx.com/features/errors/#pro_required",`+
+			`"nearest_location":{"slug":"mt-hood-meadows","url":"/api/v1/locations/or/mt-hood-meadows","distance_km":4.25,"elevation_m":1635.6}}`,
+			"X-Request-Id", "header-id"), nil
+	})
+	_, err := c.ForecastAt(context.Background(), Point{Lat: 45.33, Lon: -121.67}, nil)
+	var e *Error
+	if !errors.As(err, &e) {
+		t.Fatal(err)
+	}
+	if e.RequestID != "body-id" || e.DocURL != "https://docs.oureawx.com/features/errors/#pro_required" ||
+		e.NearestLocation == nil || e.NearestLocation.Slug != "mt-hood-meadows" || e.NearestLocation.DistanceKm != 4.25 {
+		t.Errorf("error = %+v", e)
+	}
+	c, _, _ = testClient(t, func(int, *http.Request) (*http.Response, error) {
+		return respond(400, `{"error":"BAD_REQUEST","message":"bad","param":"max_hours"}`, "X-Request-Id", "header-id"), nil
+	})
+	_, err = c.Forecast(context.Background(), "or/x", nil)
+	if !errors.As(err, &e) || e.Param != "max_hours" || e.RequestID != "header-id" || e.NearestLocation != nil {
+		t.Errorf("error = %+v", e)
 	}
 }
 

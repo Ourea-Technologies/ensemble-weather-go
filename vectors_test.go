@@ -485,13 +485,13 @@ type vectorTotal struct {
 func runCall(ctx context.Context, c *Client, call vectorCall) (any, []string, error) {
 	a := &args{raw: call.Args, used: map[string]bool{}}
 	location := func() string {
-		var loc, state, name string
+		var loc, state, slug string
 		if a.get("location", &loc) {
 			return loc
 		}
 		a.get("state", &state)
-		a.get("name", &name)
-		return state + "/" + name
+		a.get("slug", &slug)
+		return state + "/" + slug
 	}
 	forecastParams := func() *ForecastParams {
 		p := &ForecastParams{}

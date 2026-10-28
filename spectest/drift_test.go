@@ -29,14 +29,10 @@ var outOfScope = map[string]bool{"getMapsToken": true}
 
 // staleExamples are spec response examples that do not match their own
 // schema in the pinned spec (scripts/validate.py in ensemble-weather-spec
-// reports the same three). They are still round-tripped leniently; the strict
-// check expects them to fail and fails when they are fixed, so this list is
-// removed with the next spec bump.
-var staleExamples = map[string]bool{
-	"getLocationForecast 200 dailyOnly": true,
-	"getLocationForecast 200 plumes":    true,
-	"getPointForecast 200 point":        true,
-}
+// reports the same ones). They are still round-tripped leniently; the strict
+// check expects them to fail and fails when they are fixed. The pinned spec
+// has none.
+var staleExamples = map[string]bool{}
 
 type operationCase struct {
 	method string // the *Client method that exposes it
@@ -96,12 +92,6 @@ var operations = map[string]operationCase{
 	"getAvailableRuns": {"Runs", func() any { return new(ew.RunsResponse) }, func(ctx context.Context, c *ew.Client) error {
 		return ignore(c.Runs(ctx, 0))
 	}},
-	"getStormReports": {"StormReports", func() any { return new(ew.StormReportsResponse) }, func(ctx context.Context, c *ew.Client) error {
-		return ignore(c.StormReports(ctx, 0))
-	}},
-	"getStormReport": {"StormReport", func() any { return new(ew.StormReport) }, func(ctx context.Context, c *ew.Client) error {
-		return ignore(c.StormReport(ctx, 7))
-	}},
 	"getAttribution": {"Attribution", func() any { return new(ew.AttributionRegistry) }, func(ctx context.Context, c *ew.Client) error {
 		return ignore(c.Attribution(ctx))
 	}},
@@ -113,8 +103,8 @@ var schemas = map[string]reflect.Type{
 	"CurrentResponse": reflect.TypeOf(ew.CurrentResponse{}), "AlertsResponse": reflect.TypeOf(ew.AlertsResponse{}),
 	"SearchLocationsResponse": reflect.TypeOf(ew.SearchLocationsResponse{}), "PublicCatalogLocationPage": reflect.TypeOf(ew.CatalogLocationPage{}),
 	"PublicCatalogStationPage": reflect.TypeOf(ew.CatalogStationPage{}), "RunsResponse": reflect.TypeOf(ew.RunsResponse{}),
-	"StormReportsResponse": reflect.TypeOf(ew.StormReportsResponse{}), "NearbyPointResponse": reflect.TypeOf(ew.NearbyPointResponse{}),
-	"LocationsResponse": reflect.TypeOf(ew.LocationsResponse{}), "NearbyLocationsResponse": reflect.TypeOf(ew.NearbyLocationsResponse{}),
+	"NearbyPointResponse": reflect.TypeOf(ew.NearbyPointResponse{}),
+	"LocationsResponse":   reflect.TypeOf(ew.LocationsResponse{}), "NearbyLocationsResponse": reflect.TypeOf(ew.NearbyLocationsResponse{}),
 	"NearbyLocation": reflect.TypeOf(ew.NearbyLocation{}), "LocationSummary": reflect.TypeOf(ew.LocationSummary{}),
 	"ProbabilityResult": reflect.TypeOf(ew.ProbabilityResult{}), "WindowTotal": reflect.TypeOf(ew.WindowTotal{}),
 	"Quantiles": reflect.TypeOf(ew.Quantiles{}), "PrecipDisplay": reflect.TypeOf(ew.PrecipDisplay{}),
@@ -134,22 +124,24 @@ var schemas = map[string]reflect.Type{
 	"ModelMeans": reflect.TypeOf([]ew.ModelMean{}), "ModelStats": reflect.TypeOf(ew.ModelMean{}),
 	"DailyForecast": reflect.TypeOf(ew.DailyForecast{}), "DailyAstro": reflect.TypeOf(ew.DailyAstro{}),
 	"DayClimatology": reflect.TypeOf(ew.DayClimatology{}), "ElevationForecast": reflect.TypeOf(ew.ElevationForecast{}),
-	"StormReportCard": reflect.TypeOf(ew.StormReportCard{}), "SearchHit": reflect.TypeOf(ew.SearchHit{}),
+	"SearchHit":             reflect.TypeOf(ew.SearchHit{}),
 	"PublicCatalogLocation": reflect.TypeOf(ew.CatalogLocation{}), "PublicCatalogLocationDetail": reflect.TypeOf(ew.CatalogLocationDetail{}),
 	"PublicCatalogStation": reflect.TypeOf(ew.CatalogStation{}), "PublicCatalogStationDetail": reflect.TypeOf(ew.CatalogStationDetail{}),
 	"PublicCatalogPrimaryLocation": reflect.TypeOf(ew.CatalogPrimaryLocation{}), "PublicCatalogElevation": reflect.TypeOf(ew.CatalogElevation{}),
 	"PublicCatalogPhoto": reflect.TypeOf(ew.CatalogPhoto{}), "PublicCatalogWebcam": reflect.TypeOf(ew.CatalogWebcam{}),
 	"PublicCatalogNearbyStation": reflect.TypeOf(ew.CatalogNearbyStation{}), "CmsTemplateSection": reflect.TypeOf(ew.TemplateSection{}),
-	"CmsAdCreativeContent": reflect.TypeOf(ew.AdCreative{}), "CatalogTemplateSummary": reflect.TypeOf(ew.CatalogTemplate{}),
-	"CatalogResolvedEntry": reflect.TypeOf(ew.CatalogContentEntry{}), "CatalogHousePlacement": reflect.TypeOf(ew.HousePlacement{}),
-	"CatalogThirdPartyPlacement": reflect.TypeOf(ew.ThirdPartyPlacement{}), "CatalogResolvedAdSlot": reflect.TypeOf(ew.CatalogAdSlot{}),
+	"CatalogTemplateSummary": reflect.TypeOf(ew.CatalogTemplate{}), "CatalogResolvedEntry": reflect.TypeOf(ew.CatalogContentEntry{}),
+	"GapFlow": reflect.TypeOf(ew.GapFlow{}), "DailyWind": reflect.TypeOf(ew.DailyWind{}),
+	"NearestLocation": reflect.TypeOf(ew.NearestLocation{}), "ConditionIcon": reflect.TypeOf(ew.ConditionIcon("")),
+	"NullReason": reflect.TypeOf(ew.NullReason("")),
 }
 
 // notModelled are component schemas with no public model of their own:
 // the error body becomes *ew.Error, the unit system and freezing-level
-// variants are expressed by ew.Units and ew.FreezingLevel.
+// variants are expressed by ew.Units and ew.FreezingLevel, and a next
+// cursor is a *string.
 var notModelled = map[string]bool{
-	"ErrorResponse": true, "UnitSystem": true,
+	"ErrorResponse": true, "UnitSystem": true, "NextCursor": true,
 	"FreezingLevelBelowSurface": true, "FreezingLevelHeight": true, "FreezingLevelAboveProfile": true,
 }
 
@@ -309,6 +301,48 @@ func checkModel(t *testing.T, all map[string]map[string]any, path string, s map[
 			continue
 		}
 		checkModel(t, all, path+"."+name, ps.(map[string]any), ft, seen)
+	}
+}
+
+// checkNoExtraFields asserts that every JSON field of t is a property of
+// schema s (a field the spec no longer has is a renamed or withdrawn one),
+// recursing into nested objects.
+func checkNoExtraFields(t *testing.T, all map[string]map[string]any, path string, s map[string]any, gt reflect.Type, seen map[string]bool) {
+	t.Helper()
+	gt = elem(gt)
+	key := path + "|" + gt.String()
+	if seen[key] || gt == rawMessage || gt.Kind() != reflect.Struct || gt.PkgPath() == "time" {
+		return
+	}
+	seen[key] = true
+	props, items := resolve(all, s)
+	if len(props) == 0 && items != nil {
+		props, _ = resolve(all, items)
+	}
+	for name, ft := range jsonFields(gt) {
+		ps, ok := props[name]
+		if !ok {
+			t.Errorf("%s.%s: %s has a field the spec does not", path, name, gt)
+			continue
+		}
+		checkNoExtraFields(t, all, path+"."+name, ps.(map[string]any), ft, seen)
+	}
+}
+
+func TestNoModelFieldOutsideSpec(t *testing.T) {
+	s, _ := loadSpec(t)
+	all := s.Components.Schemas
+	seen := map[string]bool{}
+	for name, gt := range schemas {
+		if name == "ModelStats" {
+			continue // ew.ModelMean carries ModelMeans' id too; checked there
+		}
+		schema, ok := all[name]
+		if !ok {
+			t.Errorf("the SDK models %s, which the spec no longer has", name)
+			continue
+		}
+		checkNoExtraFields(t, all, name, schema, gt, seen)
 	}
 }
 

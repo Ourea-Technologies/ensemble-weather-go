@@ -187,8 +187,7 @@ func (c *Client) retrying(ctx context.Context, op, reqURL, key, etag string) (*h
 			return nil, nil, apiErr
 		}
 		delay := c.backoff(attempt + 1)
-		if (resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable) &&
-			resp.Header.Get("Retry-After") != "" {
+		if honorsRetryAfter(resp.StatusCode) && resp.Header.Get("Retry-After") != "" {
 			if apiErr.RetryAfter > 60*time.Second {
 				return nil, nil, apiErr // not waited out; the caller decides
 			}
@@ -198,6 +197,12 @@ func (c *Client) retrying(ctx context.Context, op, reqURL, key, etag string) (*h
 			return nil, nil, connectionError(op, err)
 		}
 	}
+}
+
+// honorsRetryAfter reports whether a status's Retry-After sets the retry
+// delay (429, 503 and 504; the API sends it on every 503 and 504).
+func honorsRetryAfter(s int) bool {
+	return s == http.StatusTooManyRequests || s == http.StatusServiceUnavailable || s == http.StatusGatewayTimeout
 }
 
 func retryableStatus(s int) bool {
@@ -294,8 +299,12 @@ func sameOrigin(a, b *url.URL) bool {
 }
 
 type errorBody struct {
-	Error   string `json:"error"`
-	Message string `json:"message"`
+	Error           string           `json:"error"`
+	Message         string           `json:"message"`
+	RequestID       string           `json:"request_id"`
+	DocURL          string           `json:"doc_url"`
+	Param           string           `json:"param"`
+	NearestLocation *NearestLocation `json:"nearest_location"`
 }
 
 func (c *Client) responseError(op string, resp *http.Response, body []byte, key string) *Error {
@@ -308,6 +317,10 @@ func (c *Client) responseError(op string, resp *http.Response, body []byte, key 
 	var eb errorBody
 	if json.Unmarshal(body, &eb) == nil && eb.Error != "" {
 		e.Code, e.Message = ErrorCode(eb.Error), eb.Message
+		e.DocURL, e.Param, e.NearestLocation = eb.DocURL, eb.Param, eb.NearestLocation
+		if eb.RequestID != "" {
+			e.RequestID = eb.RequestID
+		}
 	} else {
 		e.Message = strings.TrimSpace(string(body[:min(len(body), 200)]))
 		if e.Message == "" {
@@ -318,7 +331,7 @@ func (c *Client) responseError(op string, resp *http.Response, body []byte, key 
 		e.Message = strings.ReplaceAll(e.Message, key, "[redacted]")
 	}
 	e.Category = categorize(e.Status, e.Code)
-	if e.Status == http.StatusTooManyRequests || e.Status == http.StatusServiceUnavailable {
+	if honorsRetryAfter(e.Status) {
 		e.RetryAfter = parseRetryAfter(resp.Header.Get("Retry-After"), c.cfg.now())
 	}
 	return e

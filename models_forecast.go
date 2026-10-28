@@ -14,8 +14,7 @@ import (
 // The SDK never sums, averages or interpolates quantiles. Ask the server
 // instead: [Chance] for a probability, [Total] for a window total.
 //
-// For wind direction the quantiles describe an arc on the circle, not an
-// interval: Max may be numerically less than Min. The SDK does not "fix" this.
+// Wind direction is not a Quantiles: it is a [CircularStats].
 type Quantiles struct {
 	Mean *float64 `json:"mean,omitempty"`
 	P10  *float64 `json:"p10,omitempty"`
@@ -106,6 +105,9 @@ type ForecastResponse struct {
 // ProbabilityResult is one probability term, answered, with its reference
 // class: the variable, comparison, threshold, window and member count.
 type ProbabilityResult struct {
+	// Term is the canonical term the SDK sent, echoed by the server; the
+	// SDK matches each answer to the caller's [Chance] by it.
+	Term     string   `json:"term"`
 	Variable Variable `json:"variable"`
 	Op       Op       `json:"op"`
 	// Threshold is in the request's units at the served precision.
@@ -120,24 +122,34 @@ type ProbabilityResult struct {
 	// To is the window's (exclusive) end; nil when not covered.
 	To *time.Time `json:"to"`
 	// Probability is the share of members meeting the term, 0..1. It is nil
-	// when the served series does not reach the window's end: absent, never 0.
+	// when the server could not answer (see NullReason): absent, never 0.
 	Probability *float64 `json:"probability"`
 	// Members is the number of members that voted.
 	Members int `json:"members"`
+	// NullReason says why Probability is nil; nil when it is set.
+	NullReason *NullReason `json:"null_reason"`
 }
 
 // WindowTotal is the distribution of each member's total over a window.
 type WindowTotal struct {
+	// Term is the canonical term the SDK sent, echoed by the server; the
+	// SDK matches each answer to the caller's [Total] by it.
+	Term     string   `json:"term"`
 	Variable Variable `json:"variable"`
 	// Unit is the quantiles' unit (set by the SDK from the response's units).
-	Unit             Unit       `json:"-"`
-	WindowStartHours int        `json:"window_start_hours"`
-	WindowEndHours   int        `json:"window_end_hours"`
-	From             *time.Time `json:"from"`
-	To               *time.Time `json:"to"`
-	// Quantiles is nil when the forecast does not cover the window.
+	Unit             Unit `json:"-"`
+	WindowStartHours int  `json:"window_start_hours"`
+	WindowEndHours   int  `json:"window_end_hours"`
+	// Aggregation is how each member's hours were combined ("total" for
+	// precipitation and snowfall).
+	Aggregation Aggregation `json:"aggregation"`
+	From        *time.Time  `json:"from"`
+	To          *time.Time  `json:"to"`
+	// Quantiles is nil when the server could not answer (see NullReason).
 	Quantiles *Quantiles `json:"quantiles"`
 	Members   int        `json:"members"`
+	// NullReason says why Quantiles is nil; nil when it is set.
+	NullReason *NullReason `json:"null_reason"`
 }
 
 // PrecipDisplay is a day's precipitation headline for display.
@@ -150,11 +162,11 @@ type PrecipDisplay struct {
 // ProbabilityThresholds are the fixed thresholds behind the hourly and daily
 // probabilities, in the request's units.
 type ProbabilityThresholds struct {
-	HourlyPrecipitation              float64 `json:"hourly_precipitation"`
-	HourlySnowfall                   float64 `json:"hourly_snowfall"`
-	DailyPrecipProbability           float64 `json:"daily_precip_probability"`
-	DailyPrecipOccurrenceProbability float64 `json:"daily_precip_occurrence_probability"`
-	DailySnowProbability             float64 `json:"daily_snow_probability"`
+	HourlyPrecipitation                     float64 `json:"hourly_precipitation"`
+	HourlySnowfall                          float64 `json:"hourly_snowfall"`
+	DailyPrecipitationProbability           float64 `json:"daily_precipitation_probability"`
+	DailyPrecipitationOccurrenceProbability float64 `json:"daily_precipitation_occurrence_probability"`
+	DailySnowProbability                    float64 `json:"daily_snow_probability"`
 }
 
 // AppliedOptions reports the horizon actually served.
@@ -241,17 +253,17 @@ type SnowOutlookQuantiles struct {
 
 // TimeSeriesPoint is one forecast hour.
 type TimeSeriesPoint struct {
-	ValidTime     time.Time      `json:"valid_time"`
-	LeadTimeHours int            `json:"lead_time_hours"`
-	IsNight       bool           `json:"is_night"`
-	Condition     Condition      `json:"condition"`
-	ConditionText string         `json:"condition_text"`
-	ConditionIcon ConditionIcon  `json:"condition_icon"`
-	GustNotable   *bool          `json:"gust_notable,omitempty"`
-	PrecipType    *PrecipType    `json:"precip_type,omitempty"`
-	Inversion     *InversionInfo `json:"inversion,omitempty"`
-	FreezingLevel *FreezingLevel `json:"freezing_level,omitempty"`
-	Ensemble      EnsembleStats  `json:"ensemble"`
+	ValidTime         time.Time      `json:"valid_time"`
+	LeadTimeHours     int            `json:"lead_time_hours"`
+	IsNight           bool           `json:"is_night"`
+	Condition         Condition      `json:"condition"`
+	ConditionText     string         `json:"condition_text"`
+	ConditionIcon     ConditionIcon  `json:"condition_icon"`
+	GustNotable       *bool          `json:"gust_notable,omitempty"`
+	PrecipitationType *PrecipType    `json:"precipitation_type,omitempty"`
+	Inversion         *InversionInfo `json:"inversion,omitempty"`
+	FreezingLevel     *FreezingLevel `json:"freezing_level,omitempty"`
+	Ensemble          EnsembleStats  `json:"ensemble"`
 	// Provenance is present only with Diagnostics "provenance".
 	Provenance *HourProvenance `json:"provenance,omitempty"`
 	ModelMeans []ModelMean     `json:"model_means,omitempty"`
@@ -292,12 +304,20 @@ type Sector struct {
 	To   float64 `json:"to"`
 }
 
-// CircularStats describes wind direction as a circular distribution.
+// CircularStats describes wind direction as a circular distribution, in
+// degrees clockwise from north. Each sector is a clockwise arc, so its To
+// may be numerically less than its From (the arc crosses north); the SDK
+// does not "fix" this.
 type CircularStats struct {
-	Mean     float64  `json:"mean"`
-	Stddev   *float64 `json:"stddev,omitempty"`
-	Sector50 Sector   `json:"sector_50"`
-	Sector90 Sector   `json:"sector_90"`
+	// Mean is the members' resultant-vector mean direction, in [0, 360).
+	Mean float64 `json:"mean"`
+	// Stddev is the members' angular spread around Mean; nil on a
+	// single-member hour.
+	Stddev *float64 `json:"stddev,omitempty"`
+	// Sector50 holds the central 50 % of the members (25th to 75th circular
+	// percentile); Sector90 the central 90 % (5th to 95th).
+	Sector50 Sector `json:"sector_50"`
+	Sector90 Sector `json:"sector_90"`
 }
 
 // ModelMembers holds one model's member values at an hour.
@@ -346,24 +366,22 @@ type PrecipType struct {
 type EnsembleStats struct {
 	Temperature   Quantiles  `json:"temperature"`
 	FeelsLike     *Quantiles `json:"feels_like,omitempty"`
-	FeelsLikeUTCI *Quantiles `json:"feels_like_utci,omitempty"`
 	Dewpoint      *Quantiles `json:"dewpoint,omitempty"`
 	Precipitation Quantiles  `json:"precipitation"`
 	WindSpeed     Quantiles  `json:"wind_speed"`
 	WindGust      *Quantiles `json:"wind_gust,omitempty"`
-	// WindDirection is circular: its quantiles describe an arc, and Max may
-	// be numerically less than Min. Prefer WindDirectionCircular.
-	WindDirection         Quantiles      `json:"wind_direction"`
-	WindDirectionCircular *CircularStats `json:"wind_direction_circular,omitempty"`
-	SnowLevel             *Quantiles     `json:"snow_level,omitempty"`
-	SLR                   *Quantiles     `json:"slr,omitempty"`
-	Snowfall              *Quantiles     `json:"snowfall,omitempty"`
-	CloudCover            *Quantiles     `json:"cloud_cover,omitempty"`
-	SkinTemperature       *Quantiles     `json:"skin_temperature,omitempty"`
-	Ptype                 *Quantiles     `json:"ptype,omitempty"`
-	MSLP                  *Quantiles     `json:"mslp,omitempty"`
-	CAPE                  *Quantiles     `json:"cape,omitempty"`
-	RelativeHumidity      *Quantiles     `json:"relative_humidity,omitempty"`
+	// WindDirection is the circular distribution of the members' directions.
+	WindDirection CircularStats `json:"wind_direction"`
+	SnowLevel     *Quantiles    `json:"snow_level,omitempty"`
+	SLR           *Quantiles    `json:"slr,omitempty"`
+	Snowfall      *Quantiles    `json:"snowfall,omitempty"`
+	CloudCover    *Quantiles    `json:"cloud_cover,omitempty"`
+	// SkinTemperature and MSLP are present only when asked for with
+	// [ForecastParams.Include].
+	SkinTemperature  *Quantiles `json:"skin_temperature,omitempty"`
+	MSLP             *Quantiles `json:"mslp,omitempty"`
+	CAPE             *Quantiles `json:"cape,omitempty"`
+	RelativeHumidity *Quantiles `json:"relative_humidity,omitempty"`
 }
 
 // FreezingLevel is an hour's freezing level. Kind says which fields are set:
@@ -378,16 +396,16 @@ type FreezingLevel struct {
 
 // ModelMean is one model's statistics at an hour.
 type ModelMean struct {
-	ID            string     `json:"id"`
-	Temperature   *Quantiles `json:"temperature,omitempty"`
-	Dewpoint      *Quantiles `json:"dewpoint,omitempty"`
-	Precipitation *Quantiles `json:"precipitation,omitempty"`
-	WindSpeed     *Quantiles `json:"wind_speed,omitempty"`
-	WindDirection *Quantiles `json:"wind_direction,omitempty"`
-	SnowLevel     *Quantiles `json:"snow_level,omitempty"`
-	SLR           *Quantiles `json:"slr,omitempty"`
-	Snowfall      *Quantiles `json:"snowfall,omitempty"`
-	Interpolated  *bool      `json:"interpolated,omitempty"`
+	ID            string         `json:"id"`
+	Temperature   *Quantiles     `json:"temperature,omitempty"`
+	Dewpoint      *Quantiles     `json:"dewpoint,omitempty"`
+	Precipitation *Quantiles     `json:"precipitation,omitempty"`
+	WindSpeed     *Quantiles     `json:"wind_speed,omitempty"`
+	WindDirection *CircularStats `json:"wind_direction,omitempty"`
+	SnowLevel     *Quantiles     `json:"snow_level,omitempty"`
+	SLR           *Quantiles     `json:"slr,omitempty"`
+	Snowfall      *Quantiles     `json:"snowfall,omitempty"`
+	Interpolated  *bool          `json:"interpolated,omitempty"`
 }
 
 // DailyForecast summarises one local calendar date.
@@ -397,28 +415,26 @@ type DailyForecast struct {
 	Condition     Condition     `json:"condition"`
 	ConditionText string        `json:"condition_text"`
 	ConditionIcon ConditionIcon `json:"condition_icon"`
-	// PrecipType is nil when the day is unlikely to precipitate.
-	PrecipType        *PrecipKind `json:"precip_type,omitempty"`
+	// PrecipitationType is nil when the day is unlikely to precipitate.
+	PrecipitationType *PrecipKind `json:"precipitation_type,omitempty"`
 	High              Quantiles   `json:"high"`
 	Low               Quantiles   `json:"low"`
 	FeelsLikeHigh     *Quantiles  `json:"feels_like_high,omitempty"`
 	FeelsLikeLow      *Quantiles  `json:"feels_like_low,omitempty"`
-	FeelsLikeUTCIHigh *Quantiles  `json:"feels_like_utci_high,omitempty"`
-	FeelsLikeUTCILow  *Quantiles  `json:"feels_like_utci_low,omitempty"`
-	// TotalPrecip is the distribution of each member's own day total.
-	TotalPrecip   Quantiles  `json:"total_precip"`
-	TotalSnowfall *Quantiles `json:"total_snowfall,omitempty"`
-	// PrecipProbability is P(day total >= 2.5 mm).
-	PrecipProbability float64 `json:"precip_probability"`
-	// PrecipOccurrenceProbability is P(day total >= 1.0 mm).
-	PrecipOccurrenceProbability float64 `json:"precip_occurrence_probability"`
+	// TotalPrecipitation is the distribution of each member's own day total.
+	TotalPrecipitation Quantiles  `json:"total_precipitation"`
+	TotalSnowfall      *Quantiles `json:"total_snowfall,omitempty"`
+	// PrecipitationProbability is P(day total >= 2.5 mm).
+	PrecipitationProbability float64 `json:"precipitation_probability"`
+	// PrecipitationOccurrenceProbability is P(day total >= 1.0 mm).
+	PrecipitationOccurrenceProbability float64 `json:"precipitation_occurrence_probability"`
 	// SnowProbability is P(day snowfall >= 2.5 mm).
 	SnowProbability             float64           `json:"snow_probability"`
 	SnowLevelMean               *float64          `json:"snow_level_mean"`
 	SnowLevel                   *Quantiles        `json:"snow_level,omitempty"`
-	TotalPrecipIfWet            *Quantiles        `json:"total_precip_if_wet,omitempty"`
+	TotalPrecipitationIfWet     *Quantiles        `json:"total_precipitation_if_wet,omitempty"`
 	TotalSnowfallIfWet          *Quantiles        `json:"total_snowfall_if_wet,omitempty"`
-	PrecipDisplay               PrecipDisplay     `json:"precip_display"`
+	PrecipitationDisplay        PrecipDisplay     `json:"precipitation_display"`
 	CloudCoverMean              *float64          `json:"cloud_cover_mean,omitempty"`
 	Wind                        *DailyWind        `json:"wind,omitempty"`
 	StormOrientation            *StormOrientation `json:"storm_orientation,omitempty"`
@@ -456,27 +472,11 @@ type DayClimatology struct {
 type ElevationForecast struct {
 	Name        string            `json:"name"`
 	Elevation   float64           `json:"elevation"`
-	Default     bool              `json:"default,omitempty"`
 	Lat         float64           `json:"lat"`
 	Lon         float64           `json:"lon"`
-	Timeseries  []ElevationHour   `json:"timeseries,omitempty"`
 	Hourly      []TimeSeriesPoint `json:"hourly,omitempty"`
 	Daily       []DailyForecast   `json:"daily,omitempty"`
 	SnowOutlook *SnowOutlook      `json:"snow_outlook,omitempty"`
-}
-
-// ElevationHour is one hour of an elevation forecast's compact series.
-type ElevationHour struct {
-	ValidTime      time.Time     `json:"valid_time"`
-	LeadTimeHours  int           `json:"lead_time_hours"`
-	Temperature    Quantiles     `json:"temperature"`
-	SnowLevelDelta *Quantiles    `json:"snow_level_delta,omitempty"`
-	WindSpeed      *Quantiles    `json:"wind_speed,omitempty"`
-	WindGust       *Quantiles    `json:"wind_gust,omitempty"`
-	Precipitation  Quantiles     `json:"precipitation"`
-	Condition      Condition     `json:"condition"`
-	ConditionText  string        `json:"condition_text"`
-	ConditionIcon  ConditionIcon `json:"condition_icon"`
 }
 
 // ResponseAttribution names the data sources a response drew on.

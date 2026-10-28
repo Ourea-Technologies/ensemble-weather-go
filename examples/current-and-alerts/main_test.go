@@ -11,7 +11,7 @@ import (
 
 func TestCurrentAndAlerts(t *testing.T) {
 	out := stub.RunMain(t, main, nil)
-	for _, want := range []string{"Mt. Hood Meadows at 00:00 UTC: Snow, -2.0 °C (from nowcast)", "1 active alert(s)", "Winter Storm Warning [Severe]"} {
+	for _, want := range []string{"Mt. Hood Meadows at 00:00 UTC: Snow, -2.0 °C (from nowcast)", "1 active alert(s)", "Winter Storm Warning [severe]"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)
 		}

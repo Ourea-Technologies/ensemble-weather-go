@@ -105,7 +105,8 @@ f, err := client.Forecast(ctx, "or/mt-hood-meadows", &ew.ForecastParams{
 		{Variable: ew.Temperature, Op: ew.AtMost, Threshold: ew.Fahrenheit(32), Window: ew.HoursBetween(6, 18), Aggregation: ew.AggregationAll},
 	},
 })
-// f.Probabilities[i] answers Chances[i]; Probability is nil (never 0) when the forecast does not reach the window.
+// f.Probabilities[i] answers Chances[i] (matched by the term the server echoes, never by position);
+// Probability is nil (never 0) when the server cannot answer, with the reason in NullReason.
 ```
 
 **A window total**, the distribution of each member's own total:
@@ -171,8 +172,10 @@ for loc, err := range client.AllCatalogLocations(ctx, nil) {
 ## Errors, retries and rate limits
 
 Every call returns `error`; failures are `*ew.Error` values with `Status`,
-`Code` (the API's code, kept verbatim), `Message`, `RequestID`, `RetryAfter`
-and `RateLimit`. Test the category with `errors.Is` and a sentinel, and read
+`Code` (the API's code, kept verbatim), `Message`, `RequestID`, `DocURL` (the
+code's page in the API docs), `Param` (the parameter a 400 is about),
+`NearestLocation` (on a `PRO_REQUIRED` from a coordinate route, a nearby
+location that needs no key), `RetryAfter` and `RateLimit`. Test the category with `errors.Is` and a sentinel, and read
 the details with `errors.As`:
 
 ```go
@@ -193,7 +196,7 @@ such as an invalid `Chance`).
 
 Connection errors (except TLS verification failures), 429, 502, 503 and 504
 are retried twice by default (`WithMaxRetries`), with full-jitter backoff; a
-429 or 503 `Retry-After` is honoured exactly when it is 60 s or less, and
+429, 503 or 504 `Retry-After` is honoured exactly when it is 60 s or less, and
 returned in `RetryAfter` when it is longer. Nothing else is retried. Each
 attempt times out after 30 s (`WithTimeout`), and `ctx` bounds the whole call.
 

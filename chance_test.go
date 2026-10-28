@@ -136,8 +136,8 @@ func TestChanceUsageErrors(t *testing.T) {
 func TestChanceResultsMapBack(t *testing.T) {
 	body := `{"units":"imperial","location":{},"model_run":{},"forecast":{},"attribution":{},"nowcast_applied":true,
 	"probabilities":[
-	 {"variable":"snowfall","op":"ge","threshold":6,"window_start_hours":0,"window_end_hours":24,"aggregation":"total","probability":0.4,"members":131},
-	 {"variable":"temperature","op":"le","threshold":32,"window_start_hours":0,"window_end_hours":24,"aggregation":"any","probability":0.9,"members":131}]}`
+	 {"term":"temperature:le:32.0:24h","variable":"temperature","op":"le","threshold":32,"window_start_hours":0,"window_end_hours":24,"aggregation":"any","probability":0.9,"members":131,"null_reason":null},
+	 {"term":"snowfall:ge:6.000:24h","variable":"snowfall","op":"ge","threshold":6,"window_start_hours":0,"window_end_hours":24,"aggregation":"total","probability":null,"members":0,"null_reason":"window_not_covered"}]}`
 	c, _, _ := testClient(t, func(int, *http.Request) (*http.Response, error) { return respond(200, body), nil })
 	f, err := c.Forecast(context.Background(), "or/x", &ForecastParams{Units: UnitsImperial, Chances: []Chance{
 		{Variable: Temperature, Op: AtMost, Threshold: Fahrenheit(32)},
@@ -147,7 +147,10 @@ func TestChanceResultsMapBack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(f.Probabilities) != 3 || *f.Probabilities[0].Probability != 0.9 || *f.Probabilities[1].Probability != 0.4 || *f.Probabilities[2].Probability != 0.9 {
+	// Matched by the echoed term, not by position (the body lists them in
+	// another order); a null answer keeps its reason.
+	if len(f.Probabilities) != 3 || *f.Probabilities[0].Probability != 0.9 || f.Probabilities[1].Probability != nil ||
+		*f.Probabilities[1].NullReason != NullWindowNotCovered || *f.Probabilities[2].Probability != 0.9 {
 		t.Fatalf("probabilities = %+v", f.Probabilities)
 	}
 	if f.Probabilities[1].ThresholdUnit != UnitInch || f.Probabilities[0].ThresholdUnit != UnitFahrenheit {
