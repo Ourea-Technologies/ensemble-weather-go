@@ -166,17 +166,17 @@ func TestPointRoutes(t *testing.T) {
 	if _, err := c.GetPointForecast(ctx, Point{Lat: 45.33, Lon: -121.71}, &ForecastParams{Elevations: []string{"all"}}); !errors.Is(err, ErrUsage) {
 		t.Errorf("Elevations on a point forecast: err = %v, want usage", err)
 	}
-	if _, err := c.AlertsAt(ctx, Point{Lat: 1, Lon: 2, ElevationM: Ptr(3.0)}); !errors.Is(err, ErrUsage) {
+	if _, err := c.GetPointAlerts(ctx, Point{Lat: 1, Lon: 2, ElevationM: Ptr(3.0)}); !errors.Is(err, ErrUsage) {
 		t.Errorf("elevation on alerts: err = %v, want usage", err)
 	}
 	if len(rt.reqs) != 0 {
 		t.Fatalf("usage errors sent %d requests", len(rt.reqs))
 	}
-	_, _ = c.CurrentAt(ctx, Point{Lat: 45.33, Lon: -121.71, ElevationM: Ptr(0.0)}, &CurrentParams{IncludeNowcastHours: true, Units: UnitsImperial})
+	_, _ = c.GetPointCurrent(ctx, Point{Lat: 45.33, Lon: -121.71, ElevationM: Ptr(0.0)}, &CurrentParams{IncludeNowcastHours: true, Units: UnitsImperial})
 	if got, want := rt.last().URL.RawQuery, "elevation_m=0&include=nowcast_hours&lat=45.33&lon=-121.71&units=imperial"; got != want {
 		t.Errorf("current query = %q, want %q", got, want)
 	}
-	_, _ = c.NearbyAt(ctx, Point{Lat: 45, Lon: -121}, &NearbyParams{Limit: 3, RadiusKm: 25})
+	_, _ = c.GetPointNearby(ctx, Point{Lat: 45, Lon: -121}, &NearbyParams{Limit: 3, RadiusKm: 25})
 	if got, want := rt.last().URL.RawQuery, "lat=45&lon=-121&radius_km=25"; got != want {
 		t.Errorf("nearby query = %q, want %q", got, want)
 	}

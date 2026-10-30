@@ -12,8 +12,10 @@ server's public spec byte for byte). Breaking, as 0.x allows.
 
 ### Changed
 
-- `Client.ForecastAt` is renamed `Client.GetPointForecast`, matching the
-  operation `getPointForecast`; there is no alias.
+- The coordinate methods follow the operation ids: `Client.ForecastAt` is
+  `GetPointForecast`, `CurrentAt` is `GetPointCurrent`, `AlertsAt` is
+  `GetPointAlerts` and `NearbyAt` is `GetPointNearby`. There are no
+  aliases.
 - `precip_*` fields are `precipitation_*`: `DailyForecast.TotalPrecipitation`,
   `TotalPrecipitationIfWet`, `PrecipitationProbability`,
   `PrecipitationOccurrenceProbability`, `PrecipitationType`,

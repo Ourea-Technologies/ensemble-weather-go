@@ -53,20 +53,20 @@ var operations = map[string]operationCase{
 	"getCurrentConditions": {"Current", func() any { return new(ew.CurrentResponse) }, func(ctx context.Context, c *ew.Client) error {
 		return ignore(c.Current(ctx, "or/mt-hood-meadows", nil))
 	}},
-	"getCurrentByCoordinates": {"CurrentAt", func() any { return new(ew.CurrentResponse) }, func(ctx context.Context, c *ew.Client) error {
-		return ignore(c.CurrentAt(ctx, ew.Point{Lat: 45.33, Lon: -121.71}, nil))
+	"getCurrentByCoordinates": {"GetPointCurrent", func() any { return new(ew.CurrentResponse) }, func(ctx context.Context, c *ew.Client) error {
+		return ignore(c.GetPointCurrent(ctx, ew.Point{Lat: 45.33, Lon: -121.71}, nil))
 	}},
 	"getLocationAlerts": {"Alerts", func() any { return new(ew.AlertsResponse) }, func(ctx context.Context, c *ew.Client) error {
 		return ignore(c.Alerts(ctx, "or/mt-hood-meadows"))
 	}},
-	"getAlertsByCoordinates": {"AlertsAt", func() any { return new(ew.AlertsResponse) }, func(ctx context.Context, c *ew.Client) error {
-		return ignore(c.AlertsAt(ctx, ew.Point{Lat: 45.33, Lon: -121.71}))
+	"getAlertsByCoordinates": {"GetPointAlerts", func() any { return new(ew.AlertsResponse) }, func(ctx context.Context, c *ew.Client) error {
+		return ignore(c.GetPointAlerts(ctx, ew.Point{Lat: 45.33, Lon: -121.71}))
 	}},
 	"getNearbyLocations": {"Nearby", func() any { return new(ew.NearbyLocationsResponse) }, func(ctx context.Context, c *ew.Client) error {
 		return ignore(c.Nearby(ctx, "or/mt-hood-meadows", nil))
 	}},
-	"getNearbyByCoordinates": {"NearbyAt", func() any { return new(ew.NearbyPointResponse) }, func(ctx context.Context, c *ew.Client) error {
-		return ignore(c.NearbyAt(ctx, ew.Point{Lat: 45.33, Lon: -121.71}, nil))
+	"getNearbyByCoordinates": {"GetPointNearby", func() any { return new(ew.NearbyPointResponse) }, func(ctx context.Context, c *ew.Client) error {
+		return ignore(c.GetPointNearby(ctx, ew.Point{Lat: 45.33, Lon: -121.71}, nil))
 	}},
 	"searchLocations": {"Search", func() any { return new(ew.SearchLocationsResponse) }, func(ctx context.Context, c *ew.Client) error {
 		return ignore(c.Search(ctx, "hood", nil))

@@ -12,11 +12,11 @@ var (
 	opLocationForecast = operation{id: "getLocationForecast"}
 	opPointForecast    = operation{id: "getPointForecast"}
 	opCurrent          = operation{id: "getCurrentConditions"}
-	opCurrentAt        = operation{id: "getCurrentByCoordinates"}
+	opPointCurrent     = operation{id: "getCurrentByCoordinates"}
 	opAlerts           = operation{id: "getLocationAlerts"}
-	opAlertsAt         = operation{id: "getAlertsByCoordinates"}
+	opPointAlerts      = operation{id: "getAlertsByCoordinates"}
 	opNearby           = operation{id: "getNearbyLocations"}
-	opNearbyAt         = operation{id: "getNearbyByCoordinates"}
+	opPointNearby      = operation{id: "getNearbyByCoordinates"}
 	opSearch           = operation{id: "searchLocations", open: true}
 	opAllLocations     = operation{id: "getAllLocations"}
 	opStateLocations   = operation{id: "getLocations"}
@@ -225,14 +225,14 @@ func (c *Client) Current(ctx context.Context, location string, params *CurrentPa
 	return &r, nil
 }
 
-// CurrentAt returns current conditions at a point. It needs an API key.
-func (c *Client) CurrentAt(ctx context.Context, at Point, params *CurrentParams) (*CurrentResponse, error) {
+// GetPointCurrent returns current conditions at a point. It needs an API key.
+func (c *Client) GetPointCurrent(ctx context.Context, at Point, params *CurrentParams) (*CurrentResponse, error) {
 	q := c.currentQuery(params)
 	q.num("lat", at.Lat)
 	q.num("lon", at.Lon)
 	q.numPtr("elevation_m", at.ElevationM)
 	var r CurrentResponse
-	if err := c.get(ctx, opCurrentAt, []string{"current"}, q, &r); err != nil {
+	if err := c.get(ctx, opPointCurrent, []string{"current"}, q, &r); err != nil {
 		return nil, err
 	}
 	return &r, nil
@@ -251,16 +251,16 @@ func (c *Client) Alerts(ctx context.Context, location string) (*AlertsResponse, 
 	return &r, nil
 }
 
-// AlertsAt returns the weather alerts in effect at a point. It needs an API key.
-func (c *Client) AlertsAt(ctx context.Context, at Point) (*AlertsResponse, error) {
+// GetPointAlerts returns the weather alerts in effect at a point. It needs an API key.
+func (c *Client) GetPointAlerts(ctx context.Context, at Point) (*AlertsResponse, error) {
 	if at.ElevationM != nil {
-		return nil, usageError(opAlertsAt.id, "alerts take no elevation")
+		return nil, usageError(opPointAlerts.id, "alerts take no elevation")
 	}
 	q := &query{}
 	q.num("lat", at.Lat)
 	q.num("lon", at.Lon)
 	var r AlertsResponse
-	if err := c.get(ctx, opAlertsAt, []string{"alerts"}, q, &r); err != nil {
+	if err := c.get(ctx, opPointAlerts, []string{"alerts"}, q, &r); err != nil {
 		return nil, err
 	}
 	return &r, nil
@@ -302,16 +302,16 @@ func (c *Client) Nearby(ctx context.Context, location string, params *NearbyPara
 	return &r, nil
 }
 
-// NearbyAt returns the locations near a point.
-func (c *Client) NearbyAt(ctx context.Context, at Point, params *NearbyParams) (*NearbyPointResponse, error) {
+// GetPointNearby returns the locations near a point.
+func (c *Client) GetPointNearby(ctx context.Context, at Point, params *NearbyParams) (*NearbyPointResponse, error) {
 	if at.ElevationM != nil {
-		return nil, usageError(opNearbyAt.id, "nearby takes no elevation")
+		return nil, usageError(opPointNearby.id, "nearby takes no elevation")
 	}
 	q := c.nearbyQuery(params)
 	q.num("lat", at.Lat)
 	q.num("lon", at.Lon)
 	var r NearbyPointResponse
-	if err := c.get(ctx, opNearbyAt, []string{"nearby"}, q, &r); err != nil {
+	if err := c.get(ctx, opPointNearby, []string{"nearby"}, q, &r); err != nil {
 		return nil, err
 	}
 	return &r, nil
