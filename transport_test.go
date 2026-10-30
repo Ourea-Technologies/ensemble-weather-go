@@ -165,7 +165,7 @@ func TestErrorBodyFields(t *testing.T) {
 			`"nearest_location":{"slug":"mt-hood-meadows","url":"/api/v1/locations/or/mt-hood-meadows","distance_km":4.25,"elevation_m":1635.6}}`,
 			"X-Request-Id", "header-id"), nil
 	})
-	_, err := c.ForecastAt(context.Background(), Point{Lat: 45.33, Lon: -121.67}, nil)
+	_, err := c.GetPointForecast(context.Background(), Point{Lat: 45.33, Lon: -121.67}, nil)
 	var e *Error
 	if !errors.As(err, &e) {
 		t.Fatal(err)

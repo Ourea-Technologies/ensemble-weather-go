@@ -22,7 +22,7 @@ func main() {
 	client := ew.NewClient() // reads OUREA_API_KEY
 
 	at := ew.Point{Lat: 45.3311, Lon: -121.6649, ElevationM: ew.Ptr(2050.0)}
-	f, err := client.ForecastAt(context.Background(), at, &ew.ForecastParams{MaxHours: 48})
+	f, err := client.GetPointForecast(context.Background(), at, &ew.ForecastParams{MaxHours: 48})
 	if err != nil {
 		log.Fatal(err)
 	}

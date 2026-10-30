@@ -552,7 +552,7 @@ func runCall(ctx context.Context, c *Client, call vectorCall) (any, []string, er
 		if err := a.done(); err != nil {
 			return nil, nil, err
 		}
-		r, err := c.ForecastAt(ctx, pt, p)
+		r, err := c.GetPointForecast(ctx, pt, p)
 		return r, nil, err
 	case "searchLocations":
 		var q string

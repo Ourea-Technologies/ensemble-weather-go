@@ -86,7 +86,7 @@ func ExampleQuantiles_Range80() {
 
 func ExampleError() {
 	client := ensembleweather.NewClient()
-	_, err := client.ForecastAt(context.Background(), ensembleweather.Point{Lat: 45.0, Lon: 10.0}, nil)
+	_, err := client.GetPointForecast(context.Background(), ensembleweather.Point{Lat: 45.0, Lon: 10.0}, nil)
 
 	var apiErr *ensembleweather.Error
 	switch {

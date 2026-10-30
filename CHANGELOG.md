@@ -12,6 +12,8 @@ server's public spec byte for byte). Breaking, as 0.x allows.
 
 ### Changed
 
+- `Client.ForecastAt` is renamed `Client.GetPointForecast`, matching the
+  operation `getPointForecast`; there is no alias.
 - `precip_*` fields are `precipitation_*`: `DailyForecast.TotalPrecipitation`,
   `TotalPrecipitationIfWet`, `PrecipitationProbability`,
   `PrecipitationOccurrenceProbability`, `PrecipitationType`,

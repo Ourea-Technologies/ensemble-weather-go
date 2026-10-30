@@ -20,7 +20,7 @@
 // # Authentication
 //
 // Pass a key with [WithAPIKey] or set OUREA_API_KEY. With no key, calls are
-// anonymous (the Free tier). Forecasts at coordinates ([Client.ForecastAt])
+// anonymous (the Free tier). Forecasts at coordinates ([Client.GetPointForecast])
 // need a Pro key. Search, catalog details and attribution are by default sent
 // without the key so their responses are shared at the edge cache; use
 // [WithKeyOnOpenRoutes] to attribute every request to the key.

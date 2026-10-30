@@ -18,7 +18,7 @@ func main() {
 	client := ew.NewClient() // OUREA_API_KEY, if set, is used
 
 	// Northern Italy is outside the forecast domain (CONUS).
-	_, err := client.ForecastAt(ctx, ew.Point{Lat: 45.0, Lon: 10.0}, nil)
+	_, err := client.GetPointForecast(ctx, ew.Point{Lat: 45.0, Lon: 10.0}, nil)
 	var apiErr *ew.Error
 	switch {
 	case errors.As(err, &apiErr) && apiErr.Code == ew.CodeOutsideCoverage:

@@ -179,7 +179,7 @@ location that needs no key), `RetryAfter` and `RateLimit`. Test the category wit
 the details with `errors.As`:
 
 ```go
-_, err := client.ForecastAt(ctx, ew.Point{Lat: 45.0, Lon: 10.0}, nil)
+_, err := client.GetPointForecast(ctx, ew.Point{Lat: 45.0, Lon: 10.0}, nil)
 var apiErr *ew.Error
 switch {
 case errors.As(err, &apiErr) && apiErr.Code == ew.CodeOutsideCoverage:

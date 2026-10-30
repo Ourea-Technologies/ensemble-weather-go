@@ -173,8 +173,8 @@ func (c *Client) Forecast(ctx context.Context, location string, params *Forecast
 	return c.forecast(ctx, opLocationForecast, segs, plan)
 }
 
-// ForecastAt returns the forecast at a point. It needs a Pro API key.
-func (c *Client) ForecastAt(ctx context.Context, at Point, params *ForecastParams) (*ForecastResponse, error) {
+// GetPointForecast returns the forecast at a point. It needs a Pro API key.
+func (c *Client) GetPointForecast(ctx context.Context, at Point, params *ForecastParams) (*ForecastResponse, error) {
 	if params != nil && len(params.Elevations) > 0 {
 		return nil, usageError(opPointForecast.id, "Elevations applies only to location forecasts; set Point.ElevationM instead")
 	}

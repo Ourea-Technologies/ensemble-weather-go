@@ -47,8 +47,8 @@ var operations = map[string]operationCase{
 	"getLocationForecast": {"Forecast", func() any { return new(ew.ForecastResponse) }, func(ctx context.Context, c *ew.Client) error {
 		return ignore(c.Forecast(ctx, "or/mt-hood-meadows", nil))
 	}},
-	"getPointForecast": {"ForecastAt", func() any { return new(ew.ForecastResponse) }, func(ctx context.Context, c *ew.Client) error {
-		return ignore(c.ForecastAt(ctx, ew.Point{Lat: 45.33, Lon: -121.71}, nil))
+	"getPointForecast": {"GetPointForecast", func() any { return new(ew.ForecastResponse) }, func(ctx context.Context, c *ew.Client) error {
+		return ignore(c.GetPointForecast(ctx, ew.Point{Lat: 45.33, Lon: -121.71}, nil))
 	}},
 	"getCurrentConditions": {"Current", func() any { return new(ew.CurrentResponse) }, func(ctx context.Context, c *ew.Client) error {
 		return ignore(c.Current(ctx, "or/mt-hood-meadows", nil))

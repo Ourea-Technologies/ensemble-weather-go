@@ -163,7 +163,7 @@ func TestLocationParsing(t *testing.T) {
 func TestPointRoutes(t *testing.T) {
 	c, rt, _ := testClient(t, okForecast, WithAPIKey("ow_pro"))
 	ctx := context.Background()
-	if _, err := c.ForecastAt(ctx, Point{Lat: 45.33, Lon: -121.71}, &ForecastParams{Elevations: []string{"all"}}); !errors.Is(err, ErrUsage) {
+	if _, err := c.GetPointForecast(ctx, Point{Lat: 45.33, Lon: -121.71}, &ForecastParams{Elevations: []string{"all"}}); !errors.Is(err, ErrUsage) {
 		t.Errorf("Elevations on a point forecast: err = %v, want usage", err)
 	}
 	if _, err := c.AlertsAt(ctx, Point{Lat: 1, Lon: 2, ElevationM: Ptr(3.0)}); !errors.Is(err, ErrUsage) {
