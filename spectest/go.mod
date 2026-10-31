@@ -8,6 +8,6 @@ go 1.22
 
 require oureawx.com/go/ensemble-weather v0.0.0
 
-require go.yaml.in/yaml/v3 v3.0.4
+require go.yaml.in/yaml/v3 v3.0.5
 
 replace oureawx.com/go/ensemble-weather => ../
