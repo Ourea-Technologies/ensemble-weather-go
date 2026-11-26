@@ -19,7 +19,7 @@ const (
 	// CategoryAuthentication: the API key is missing or invalid (401).
 	CategoryAuthentication Category = iota + 1
 	// CategoryPermission: the key's plan does not allow the request (403),
-	// for example PRO_REQUIRED.
+	// for example PRO_REQUIRED or PLUS_REQUIRED.
 	CategoryPermission
 	// CategoryNotFound: the location or resource does not exist (404, 410).
 	CategoryNotFound
@@ -98,6 +98,7 @@ const (
 	CodeInvalidAPIKey       ErrorCode = "INVALID_API_KEY" //nolint:gosec // G101: an error code, not a credential
 	CodeUnauthorized        ErrorCode = "UNAUTHORIZED"
 	CodeProRequired         ErrorCode = "PRO_REQUIRED"
+	CodePlusRequired        ErrorCode = "PLUS_REQUIRED"
 	CodeLocationNotFound    ErrorCode = "LOCATION_NOT_FOUND"
 	CodeNotFound            ErrorCode = "NOT_FOUND"
 	CodeBadRequest          ErrorCode = "BAD_REQUEST"
@@ -117,6 +118,7 @@ var codeCategories = map[ErrorCode]Category{
 	CodeInvalidAPIKey:       CategoryAuthentication,
 	CodeUnauthorized:        CategoryAuthentication,
 	CodeProRequired:         CategoryPermission,
+	CodePlusRequired:        CategoryPermission,
 	CodeLocationNotFound:    CategoryNotFound,
 	CodeNotFound:            CategoryNotFound,
 	CodeBadRequest:          CategoryInvalidRequest,

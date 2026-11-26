@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -95,6 +96,30 @@ var operations = map[string]operationCase{
 	"getAttribution": {"Attribution", func() any { return new(ew.AttributionRegistry) }, func(ctx context.Context, c *ew.Client) error {
 		return ignore(c.Attribution(ctx))
 	}},
+	"explore": {"Explore", func() any { return new(ew.ExploreResponse) }, func(ctx context.Context, c *ew.Client) error {
+		return ignore(c.Explore(ctx, ew.ExploreSnow5d, nil))
+	}},
+	"getComposition": {"Composition", func() any { return new(ew.CompositionResponse) }, func(ctx context.Context, c *ew.Client) error {
+		return ignore(c.Composition(ctx))
+	}},
+	"getLocationSeason": {"Season", func() any { return new(ew.SeasonResponse) }, func(ctx context.Context, c *ew.Client) error {
+		return ignore(c.Season(ctx, "or/mt-hood-meadows", nil))
+	}},
+	"getLocationSnowTrend": {"SnowTrend", func() any { return new(ew.SnowTrendResponse) }, func(ctx context.Context, c *ew.Client) error {
+		return ignore(c.SnowTrend(ctx, "or/mt-hood-meadows", nil))
+	}},
+	"getLocationSnowpack": {"Snowpack", func() any { return new(ew.SnowpackResponse) }, func(ctx context.Context, c *ew.Client) error {
+		return ignore(c.Snowpack(ctx, "or/mt-hood-meadows", nil))
+	}},
+	"getLocationSnowpackPlume": {"SnowpackPlume", func() any { return new(ew.SnowpackPlumeResponse) }, func(ctx context.Context, c *ew.Client) error {
+		return ignore(c.SnowpackPlume(ctx, "or/mt-hood-meadows", nil))
+	}},
+	"getAlertOutlines": {"AlertOutlines", func() any { return new(ew.AlertOutlineCollection) }, func(ctx context.Context, c *ew.Client) error {
+		return ignore(c.AlertOutlines(ctx, nil))
+	}},
+	"getAvalancheZones": {"AvalancheZones", func() any { return new(ew.AvalancheZoneCollection) }, func(ctx context.Context, c *ew.Client) error {
+		return ignore(c.AvalancheZones(ctx))
+	}},
 }
 
 // schemas maps every component schema the operations reach to its model.
@@ -134,6 +159,41 @@ var schemas = map[string]reflect.Type{
 	"GapFlow": reflect.TypeOf(ew.GapFlow{}), "DailyWind": reflect.TypeOf(ew.DailyWind{}),
 	"NearestLocation": reflect.TypeOf(ew.NearestLocation{}), "ConditionIcon": reflect.TypeOf(ew.ConditionIcon("")),
 	"NullReason": reflect.TypeOf(ew.NullReason("")),
+
+	"ExploreResponse": reflect.TypeOf(ew.ExploreResponse{}), "ExploreItem": reflect.TypeOf(ew.ExploreItem{}),
+	"ExploreValue": reflect.TypeOf(ew.ExploreValue{}), "CompositionResponse": reflect.TypeOf(ew.CompositionResponse{}),
+	"SeasonResponse": reflect.TypeOf(ew.SeasonResponse{}), "SeasonTotal": reflect.TypeOf(ew.SeasonTotal{}),
+	"SeasonStation": reflect.TypeOf(ew.SeasonStation{}), "SeasonDay": reflect.TypeOf(ew.SeasonDay{}),
+	"SnowTrendResponse": reflect.TypeOf(ew.SnowTrendResponse{}), "SnowTrendGrid": reflect.TypeOf(ew.SnowTrendGrid{}),
+	"SnowTrendDay":     reflect.TypeOf(ew.SnowTrendDay{}),
+	"SnowpackResponse": reflect.TypeOf(ew.SnowpackResponse{}), "SnowpackRun": reflect.TypeOf(ew.SnowpackRun{}),
+	"SnowpackSpot": reflect.TypeOf(ew.SnowpackSpot{}), "SnowpackStep": reflect.TypeOf(ew.SnowpackStep{}),
+	"SnowpackLayer": reflect.TypeOf(ew.SnowpackLayer{}), "SnowpackAspect": reflect.TypeOf(ew.SnowpackAspect{}),
+	"SnowpackDepth": reflect.TypeOf(ew.SnowpackDepth{}), "SnowpackPlumeResponse": reflect.TypeOf(ew.SnowpackPlumeResponse{}),
+	"AlertOutlineCollection": reflect.TypeOf(ew.AlertOutlineCollection{}), "AlertOutlineFeature": reflect.TypeOf(ew.AlertOutlineFeature{}),
+	"AlertOutlineGeometry": reflect.TypeOf(ew.AlertOutlineGeometry{}), "AlertOutlineProperties": reflect.TypeOf(ew.AlertOutlineProperties{}),
+	"AvalancheZoneCollection": reflect.TypeOf(ew.AvalancheZoneCollection{}), "AvalancheZoneFeature": reflect.TypeOf(ew.AvalancheZoneFeature{}),
+	"AvalancheZoneGeometry": reflect.TypeOf(ew.AvalancheZoneGeometry{}), "AvalancheForecast": reflect.TypeOf(ew.AvalancheForecast{}),
+	"ForecastLocation": reflect.TypeOf(ew.ForecastLocation{}), "ElevationSummary": reflect.TypeOf(ew.ElevationSummary{}),
+	"MemberPlume": reflect.TypeOf(ew.MemberPlume{}), "PlumeHeadline": reflect.TypeOf(ew.PlumeHeadline{}),
+	"PlumeBands": reflect.TypeOf(ew.PlumeBands{}), "BandColumns": reflect.TypeOf(ew.BandColumns{}),
+	"PooledColumns": reflect.TypeOf(ew.PooledColumns{}), "ModelColumns": reflect.TypeOf(ew.ModelColumns{}),
+	"MemberColumn": reflect.TypeOf([][]*float64{}), "NullableNumbers": reflect.TypeOf([]*float64{}),
+	"MemberQuantiles": reflect.TypeOf(ew.MemberQuantiles{}), "MembersSpread": reflect.TypeOf(ew.MembersSpread{}),
+	"PrecipOutlook": reflect.TypeOf(ew.PrecipOutlook{}), "PrecipitationByType": reflect.TypeOf(ew.PrecipitationByType{}),
+	"SnowLevelRange": reflect.TypeOf(ew.SnowLevelRange{}), "SnowOnGround": reflect.TypeOf(ew.SnowOnGround{}),
+	"DayNormal": reflect.TypeOf(ew.DayNormal{}), "DayDeparture": reflect.TypeOf(ew.DayDeparture{}),
+	"DayPercentile": reflect.TypeOf(ew.DayPercentile{}),
+	"PlaceSummary":  reflect.TypeOf(ew.PlaceSummary{}), "SummaryEvent": reflect.TypeOf(ew.SummaryEvent{}),
+	"SummaryValues": reflect.TypeOf(ew.SummaryValues{}), "PassForecast": reflect.TypeOf(ew.PassForecast{}),
+	"PassSnow24h": reflect.TypeOf(ew.PassSnow24h{}), "PassChances": reflect.TypeOf(ew.PassChances{}),
+	"PassChance": reflect.TypeOf(ew.PassChance{}), "PassSnowWindow": reflect.TypeOf(ew.PassSnowWindow{}),
+	"PassHour": reflect.TypeOf(ew.PassHour{}), "PassTravelWindows": reflect.TypeOf(ew.PassTravelWindows{}),
+	"PassTravelWindow": reflect.TypeOf(ew.PassTravelWindow{}), "PassOfficialStatus": reflect.TypeOf(ew.PassOfficialStatus{}),
+	"PassStatusSegment": reflect.TypeOf(ew.PassStatusSegment{}), "PassRoadSensor": reflect.TypeOf(ew.PassRoadSensor{}),
+	"PassCamera":    reflect.TypeOf(ew.PassCamera{}),
+	"SnowCharacter": reflect.TypeOf(ew.SnowCharacter("")), "AlertClass": reflect.TypeOf(ew.AlertClass("")),
+	"PassStatusLevel": reflect.TypeOf(ew.PassStatusLevel("")),
 }
 
 // notModelled are component schemas with no public model of their own:
@@ -540,5 +600,165 @@ func TestErrorExamplesBecomeTypedErrors(t *testing.T) {
 				t.Errorf("error = %+v, want code %s status %d", e, want, status)
 			}
 		})
+	}
+}
+
+const behaviorPath = "../spec/BEHAVIOR.md"
+
+// rename is one row of the BEHAVIOR.md 3.0 table: the field whose JSON name
+// is wire, on the schema (or inline object) holder, takes the SDK name sdk.
+type rename struct{ holder, wire, sdk string }
+
+var backticked = regexp.MustCompile("`([^`]+)`")
+
+// renameTable reads the stuttering-field table from the pinned BEHAVIOR.md,
+// so a row added to the spec is enforced here without a code change.
+func renameTable(t *testing.T) []rename {
+	t.Helper()
+	raw, err := os.ReadFile(behaviorPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(raw)
+	start := strings.Index(text, "### 3.0 ")
+	end := strings.Index(text, "### 3.1 ")
+	if start < 0 || end < start {
+		t.Fatal("BEHAVIOR.md has no section 3.0")
+	}
+	var rows []rename
+	for _, line := range strings.Split(text[start:end], "\n") {
+		cells := strings.Split(strings.Trim(strings.TrimSpace(line), "|"), "|")
+		if len(cells) != 3 || !strings.HasPrefix(strings.TrimSpace(cells[0]), "`") {
+			continue
+		}
+		var holders, wires, sdks []string
+		for _, m := range backticked.FindAllStringSubmatch(cells[0], -1) {
+			holders = append(holders, m[1])
+		}
+		for _, m := range backticked.FindAllStringSubmatch(cells[1], -1) {
+			wires = append(wires, m[1])
+		}
+		for _, m := range backticked.FindAllStringSubmatch(cells[2], -1) {
+			sdks = append(sdks, m[1])
+		}
+		if len(wires) != len(sdks) {
+			t.Fatalf("BEHAVIOR.md 3.0 row %q: %d wire names, %d SDK names", line, len(wires), len(sdks))
+		}
+		for _, h := range holders {
+			for i := range wires {
+				rows = append(rows, rename{h, wires[i], sdks[i]})
+			}
+		}
+	}
+	if len(rows) < 40 {
+		t.Fatalf("read %d renames from BEHAVIOR.md 3.0, want at least 40", len(rows))
+	}
+	return rows
+}
+
+// squash folds a name for comparison: StartHours, start_hours and
+// STARTHOURS are one name.
+func squash(s string) string { return strings.ToLower(strings.ReplaceAll(s, "_", "")) }
+
+func tagged(gt reflect.Type, wire string) (reflect.StructField, bool) {
+	for i := 0; i < gt.NumField(); i++ {
+		f := gt.Field(i)
+		if f.Anonymous {
+			if sf, ok := tagged(elem(f.Type), wire); ok {
+				return sf, true
+			}
+			continue
+		}
+		if tag, _, _ := strings.Cut(f.Tag.Get("json"), ","); tag == wire {
+			return f, true
+		}
+	}
+	return reflect.StructField{}, false
+}
+
+// holderType resolves a table holder ("ForecastResponse",
+// "CurrentConditions.station", "TimeSeriesPoint.members[]") to its model.
+func holderType(holder string) (reflect.Type, error) {
+	parts := strings.Split(strings.TrimSuffix(holder, "[]"), ".")
+	if parts[0] == "ErrorResponse" {
+		return reflect.TypeOf(ew.Error{}), nil
+	}
+	gt, ok := schemas[parts[0]]
+	if !ok {
+		return nil, fmt.Errorf("schema %s has no model", parts[0])
+	}
+	gt = elem(gt)
+	for _, p := range parts[1:] {
+		f, ok := tagged(gt, p)
+		if !ok {
+			return nil, fmt.Errorf("%s has no field %s", gt, p)
+		}
+		gt = elem(f.Type)
+	}
+	return gt, nil
+}
+
+// TestRenamesFollowTheTable checks the Go field names against BEHAVIOR.md
+// 3.0: each row's field carries the SDK name (its tag keeps the JSON name),
+// and every other field of every model is the JSON name in Go case, so a
+// rename the table does not list fails too.
+func TestRenamesFollowTheTable(t *testing.T) {
+	allowed := map[reflect.Type]map[string]string{}
+	for _, r := range renameTable(t) {
+		gt, err := holderType(r.holder)
+		if err != nil {
+			t.Errorf("rename %s.%s -> %s: %v", r.holder, r.wire, r.sdk, err)
+			continue
+		}
+		if gt == reflect.TypeOf(ew.Error{}) {
+			if _, ok := gt.FieldByName("Code"); !ok {
+				t.Errorf("ew.Error has no Code field (the table's %s.%s)", r.holder, r.wire)
+			}
+			continue
+		}
+		f, ok := tagged(gt, r.wire)
+		switch {
+		case !ok:
+			t.Errorf("%s (%s) has no field tagged %q", gt, r.holder, r.wire)
+		case squash(f.Name) != squash(r.sdk):
+			t.Errorf("%s.%s (JSON %q) should be named %q (BEHAVIOR.md 3.0)", gt, f.Name, r.wire, r.sdk)
+		}
+		if allowed[gt] == nil {
+			allowed[gt] = map[string]string{}
+		}
+		allowed[gt][r.wire] = r.sdk
+	}
+
+	seen := map[reflect.Type]bool{}
+	var walk func(gt reflect.Type)
+	walk = func(gt reflect.Type) {
+		gt = elem(gt)
+		if seen[gt] || gt.Kind() != reflect.Struct || gt == rawMessage || gt.PkgPath() != reflect.TypeOf(ew.Client{}).PkgPath() {
+			return
+		}
+		seen[gt] = true
+		for i := 0; i < gt.NumField(); i++ {
+			f := gt.Field(i)
+			tag, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+			if tag == "-" || !f.IsExported() {
+				continue
+			}
+			walk(f.Type)
+			if f.Anonymous || tag == "" {
+				continue
+			}
+			if squash(f.Name) == squash(tag) {
+				if _, renamed := allowed[gt][tag]; renamed {
+					t.Errorf("%s.%s keeps its JSON name %q, which BEHAVIOR.md 3.0 renames", gt, f.Name, tag)
+				}
+				continue
+			}
+			if _, ok := allowed[gt][tag]; !ok {
+				t.Errorf("%s.%s renames JSON %q, and BEHAVIOR.md 3.0 has no such row", gt, f.Name, tag)
+			}
+		}
+	}
+	for _, gt := range schemas {
+		walk(gt)
 	}
 }

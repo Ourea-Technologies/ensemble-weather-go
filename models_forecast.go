@@ -81,13 +81,19 @@ type ForecastResponse struct {
 	// nil when none were asked for or the server sent none.
 	WindowTotals []WindowTotal `json:"window_totals,omitempty"`
 	// Applied reports options the server clamped to the caller's tier.
-	Applied  *AppliedOptions `json:"applied,omitempty"`
-	Location LocationRef     `json:"location"`
-	ModelRun ModelRunInfo    `json:"model_run"`
+	Applied *AppliedOptions `json:"applied,omitempty"`
+	// Location is the location (or point) with the elevation its series is
+	// served at and its named elevations.
+	Location ForecastLocation `json:"location"`
+	ModelRun ModelRunInfo     `json:"model_run"`
 	// Units is the unit system of every value in this response.
-	Units              Units               `json:"units"`
-	Forecast           ForecastData        `json:"forecast"`
-	ElevationForecasts []ElevationForecast `json:"elevation_forecasts,omitempty"`
+	Units Units `json:"units"`
+	// Series (JSON `forecast`) holds the hourly series, the daily summaries
+	// and, with [MembersAsPlume], the plume columns.
+	Series ForecastData `json:"forecast"`
+	// Elevations (JSON `elevation_forecasts`) are the forecasts at the
+	// elevations asked for with [ForecastParams.Elevations].
+	Elevations []ElevationForecast `json:"elevation_forecasts,omitempty"`
 	// NowcastApplied reports whether the live nowcast layer is baked in.
 	NowcastApplied bool `json:"nowcast_applied"`
 	// NowcastUnavailable lists live inputs this response was built without.
@@ -98,6 +104,12 @@ type ForecastResponse struct {
 	NearestSensors []NearestSensor    `json:"nearest_sensors,omitempty"`
 	Point          *PointInfo         `json:"point,omitempty"`
 	Current        *CurrentConditions `json:"current,omitempty"`
+	// Avalanche is today's published avalanche danger rating for the zone
+	// the location is in; nil outside every zone.
+	Avalanche *AvalancheForecast `json:"avalanche,omitempty"`
+	// SnowOnGround is the modelled snow on the ground at the location's own
+	// point (beta); nil where no snowpack column runs or its run is stale.
+	SnowOnGround *SnowOnGround `json:"snow_on_ground,omitempty"`
 	// Attribution names the data sources; carry Credit with redistributed output.
 	Attribution ResponseAttribution `json:"attribution"`
 }
@@ -121,12 +133,13 @@ type ProbabilityResult struct {
 	From *time.Time `json:"from"`
 	// To is the window's (exclusive) end; nil when not covered.
 	To *time.Time `json:"to"`
-	// Probability is the share of members meeting the term, 0..1. It is nil
-	// when the server could not answer (see NullReason): absent, never 0.
-	Probability *float64 `json:"probability"`
+	// Value (JSON `probability`) is the share of members meeting the term,
+	// 0..1. It is nil when the server could not answer (see NullReason):
+	// absent, never 0.
+	Value *float64 `json:"probability"`
 	// Members is the number of members that voted.
 	Members int `json:"members"`
-	// NullReason says why Probability is nil; nil when it is set.
+	// NullReason says why Value is nil; nil when it is set.
 	NullReason *NullReason `json:"null_reason"`
 }
 
@@ -137,9 +150,11 @@ type WindowTotal struct {
 	Term     string   `json:"term"`
 	Variable Variable `json:"variable"`
 	// Unit is the quantiles' unit (set by the SDK from the response's units).
-	Unit             Unit `json:"-"`
-	WindowStartHours int  `json:"window_start_hours"`
-	WindowEndHours   int  `json:"window_end_hours"`
+	Unit Unit `json:"-"`
+	// StartHours (JSON `window_start_hours`) is the window's first hour.
+	StartHours int `json:"window_start_hours"`
+	// EndHours (JSON `window_end_hours`) is the window's (exclusive) last hour.
+	EndHours int `json:"window_end_hours"`
 	// Aggregation is how each member's hours were combined ("total" for
 	// precipitation and snowfall).
 	Aggregation Aggregation `json:"aggregation"`
@@ -150,6 +165,11 @@ type WindowTotal struct {
 	Members   int        `json:"members"`
 	// NullReason says why Quantiles is nil; nil when it is set.
 	NullReason *NullReason `json:"null_reason"`
+	// Method is how Quantiles was computed: "members" (each member's own
+	// aggregate, then quantiles across the members) or "ensemble_moments"
+	// (estimated from an ensemble's mean and spread). nil exactly when
+	// Quantiles is.
+	Method *string `json:"method"`
 }
 
 // PrecipDisplay is a day's precipitation headline for display.
@@ -157,16 +177,26 @@ type PrecipDisplay struct {
 	Kind   PrecipKind `json:"kind"`
 	Chance float64    `json:"chance"`
 	Amount *float64   `json:"amount,omitempty"`
+	// SnowAmount is the day's mean snowfall in the request's snow units,
+	// present on every day that serves snowfall, whatever Kind.
+	SnowAmount *float64 `json:"snow_amount,omitempty"`
 }
 
 // ProbabilityThresholds are the fixed thresholds behind the hourly and daily
 // probabilities, in the request's units.
 type ProbabilityThresholds struct {
-	HourlyPrecipitation                     float64 `json:"hourly_precipitation"`
-	HourlySnowfall                          float64 `json:"hourly_snowfall"`
-	DailyPrecipitationProbability           float64 `json:"daily_precipitation_probability"`
-	DailyPrecipitationOccurrenceProbability float64 `json:"daily_precipitation_occurrence_probability"`
-	DailySnowProbability                    float64 `json:"daily_snow_probability"`
+	HourlyPrecipitation float64 `json:"hourly_precipitation"`
+	HourlySnowfall      float64 `json:"hourly_snowfall"`
+	// DailyPrecipitation (JSON `daily_precipitation_probability`) is the day
+	// total behind [DailyForecast.PrecipitationProbability].
+	DailyPrecipitation float64 `json:"daily_precipitation_probability"`
+	// DailyPrecipitationOccurrence (JSON
+	// `daily_precipitation_occurrence_probability`) is the day total behind
+	// [DailyForecast.PrecipitationOccurrenceProbability].
+	DailyPrecipitationOccurrence float64 `json:"daily_precipitation_occurrence_probability"`
+	// DailySnow (JSON `daily_snow_probability`) is the day snowfall behind
+	// [DailyForecast.SnowProbability].
+	DailySnow float64 `json:"daily_snow_probability"`
 }
 
 // AppliedOptions reports the horizon actually served.
@@ -220,6 +250,13 @@ type ModelEntry struct {
 	ID      string     `json:"id"`
 	Cycle   *time.Time `json:"cycle,omitempty"`
 	Members *int       `json:"members,omitempty"`
+	// DisplayMembers are the member ids of this model's members served for
+	// display only (RRFS m001..m005): they appear with the members and in
+	// the plume, and in nothing else (not in Members or the blend).
+	DisplayMembers []int `json:"display_members,omitempty"`
+	// DisplayMembersSnowfall says how the display members' snowfall is made
+	// ("borrowed_from_deterministic"); present exactly when DisplayMembers is.
+	DisplayMembersSnowfall string `json:"display_members_snowfall,omitempty"`
 }
 
 // ForecastData holds the hourly series and daily summaries.
@@ -231,6 +268,13 @@ type ForecastData struct {
 	Timeseries  []TimeSeriesPoint `json:"timeseries,omitempty"`
 	Daily       []DailyForecast   `json:"daily,omitempty"`
 	SnowOutlook *SnowOutlook      `json:"snow_outlook,omitempty"`
+	// PrecipitationOutlook holds rolling liquid totals over SnowOutlook's
+	// windows; present exactly when SnowOutlook is.
+	PrecipitationOutlook *PrecipOutlook `json:"precipitation_outlook,omitempty"`
+	// Plume holds the members in columns, present only with
+	// [MembersAsPlume], which serves it instead of Timeseries, Daily,
+	// SnowOutlook and PrecipitationOutlook.
+	Plume *MemberPlume `json:"plume,omitempty"`
 }
 
 // SnowOutlook holds snow totals for common display windows, as the server
@@ -239,6 +283,7 @@ type ForecastData struct {
 type SnowOutlook struct {
 	Next24h         *float64              `json:"next_24h"`
 	Next48h         *float64              `json:"next_48h"`
+	Next72h         *float64              `json:"next_72h"`
 	Next7d          *float64              `json:"next_7d"`
 	Overnight4pm9am *float64              `json:"overnight_4pm_9am,omitempty"`
 	Quantiles       *SnowOutlookQuantiles `json:"quantiles,omitempty"`
@@ -248,28 +293,40 @@ type SnowOutlook struct {
 type SnowOutlookQuantiles struct {
 	Next24h *Quantiles `json:"next_24h,omitempty"`
 	Next48h *Quantiles `json:"next_48h,omitempty"`
+	Next72h *Quantiles `json:"next_72h"`
 	Next7d  *Quantiles `json:"next_7d,omitempty"`
 }
 
 // TimeSeriesPoint is one forecast hour.
 type TimeSeriesPoint struct {
-	ValidTime         time.Time      `json:"valid_time"`
-	LeadTimeHours     int            `json:"lead_time_hours"`
-	IsNight           bool           `json:"is_night"`
-	Condition         Condition      `json:"condition"`
-	ConditionText     string         `json:"condition_text"`
-	ConditionIcon     ConditionIcon  `json:"condition_icon"`
-	GustNotable       *bool          `json:"gust_notable,omitempty"`
-	PrecipitationType *PrecipType    `json:"precipitation_type,omitempty"`
-	Inversion         *InversionInfo `json:"inversion,omitempty"`
-	FreezingLevel     *FreezingLevel `json:"freezing_level,omitempty"`
-	Ensemble          EnsembleStats  `json:"ensemble"`
+	ValidTime     time.Time `json:"valid_time"`
+	LeadTimeHours int       `json:"lead_time_hours"`
+	IsNight       bool      `json:"is_night"`
+	// Measured reports that the radar measured precipitation in this hour.
+	Measured          bool          `json:"measured"`
+	Condition         Condition     `json:"condition"`
+	ConditionText     string        `json:"condition_text"`
+	ConditionIcon     ConditionIcon `json:"condition_icon"`
+	GustNotable       *bool         `json:"gust_notable,omitempty"`
+	PrecipitationType *PrecipType   `json:"precipitation_type,omitempty"`
+	// SnowCharacter is the hour's snow character; nil on an hour without snow.
+	SnowCharacter *SnowCharacter `json:"snow_character,omitempty"`
+	Inversion     *InversionInfo `json:"inversion,omitempty"`
+	FreezingLevel *FreezingLevel `json:"freezing_level,omitempty"`
+	Ensemble      EnsembleStats  `json:"ensemble"`
 	// Provenance is present only with Diagnostics "provenance".
 	Provenance *HourProvenance `json:"provenance,omitempty"`
 	ModelMeans []ModelMean     `json:"model_means,omitempty"`
 	// Members is present only with Members: one entry per model.
 	Members           []ModelMembers     `json:"members,omitempty"`
 	MembersCumulative *MembersCumulative `json:"members_cumulative,omitempty"`
+	// MembersSpread is the members' spread at this hour, with Members.
+	MembersSpread *MembersSpread `json:"members_spread,omitempty"`
+	// Members6h are the members' 6-hour totals ending at this hour, at the
+	// 00, 06, 12 and 18Z hours, with Members.
+	Members6h *MembersCumulative `json:"members_6h,omitempty"`
+	// PrecipitationByType splits the hour's mean precipitation by type.
+	PrecipitationByType *PrecipitationByType `json:"precipitation_by_type,omitempty"`
 	// CumulativePrecipitation is the server's running total of the hourly
 	// precipitation means from the first served hour.
 	CumulativePrecipitation *float64 `json:"cumulative_precipitation,omitempty"`
@@ -322,30 +379,35 @@ type CircularStats struct {
 
 // ModelMembers holds one model's member values at an hour.
 type ModelMembers struct {
-	ID      string           `json:"id"`
-	Members []MemberForecast `json:"members"`
+	// ID is the model, such as "gefs".
+	ID string `json:"id"`
+	// Items (JSON `members`) are the model's members.
+	Items []MemberForecast `json:"members"`
 }
 
 // MemberForecast is one ensemble member's values at an hour. The plume view
 // (Free) withholds wind and SLR.
 type MemberForecast struct {
-	MemberID                int      `json:"member_id"`
+	// ID (JSON `member_id`) is the member's number within its model.
+	ID                      int      `json:"member_id"`
 	Temperature             *float64 `json:"temperature,omitempty"`
 	Precipitation           *float64 `json:"precipitation,omitempty"`
 	PrecipitationHours      *int     `json:"precipitation_hours,omitempty"`
 	WindSpeed               *float64 `json:"wind_speed,omitempty"`
 	WindDirection           *float64 `json:"wind_direction,omitempty"`
 	SnowLevel               *float64 `json:"snow_level,omitempty"`
+	SnowLevelWetBulb        *float64 `json:"snow_level_wet_bulb,omitempty"`
 	SLR                     *float64 `json:"slr,omitempty"`
 	Snowfall                *float64 `json:"snowfall,omitempty"`
 	CumulativePrecipitation *float64 `json:"cumulative_precipitation,omitempty"`
 	CumulativeSnowfall      *float64 `json:"cumulative_snowfall,omitempty"`
 }
 
-// MembersCumulative are the distributions of the members' running totals.
+// MembersCumulative are the distributions of the members' totals (running
+// totals, or 6-hour totals in [TimeSeriesPoint.Members6h]).
 type MembersCumulative struct {
-	Precipitation *Quantiles `json:"precipitation,omitempty"`
-	Snowfall      *Quantiles `json:"snowfall,omitempty"`
+	Precipitation *MemberQuantiles `json:"precipitation,omitempty"`
+	Snowfall      *MemberQuantiles `json:"snowfall,omitempty"`
 }
 
 // InversionInfo describes a detected temperature inversion or cold pool.
@@ -373,9 +435,11 @@ type EnsembleStats struct {
 	// WindDirection is the circular distribution of the members' directions.
 	WindDirection CircularStats `json:"wind_direction"`
 	SnowLevel     *Quantiles    `json:"snow_level,omitempty"`
-	SLR           *Quantiles    `json:"slr,omitempty"`
-	Snowfall      *Quantiles    `json:"snowfall,omitempty"`
-	CloudCover    *Quantiles    `json:"cloud_cover,omitempty"`
+	// SnowLevelWetBulb is the snow level on the NWS scale (the 0.5 C wet-bulb height).
+	SnowLevelWetBulb *Quantiles `json:"snow_level_wet_bulb,omitempty"`
+	SLR              *Quantiles `json:"slr,omitempty"`
+	Snowfall         *Quantiles `json:"snowfall,omitempty"`
+	CloudCover       *Quantiles `json:"cloud_cover,omitempty"`
 	// SkinTemperature and MSLP are present only when asked for with
 	// [ForecastParams.Include].
 	SkinTemperature  *Quantiles `json:"skin_temperature,omitempty"`
@@ -396,16 +460,17 @@ type FreezingLevel struct {
 
 // ModelMean is one model's statistics at an hour.
 type ModelMean struct {
-	ID            string         `json:"id"`
-	Temperature   *Quantiles     `json:"temperature,omitempty"`
-	Dewpoint      *Quantiles     `json:"dewpoint,omitempty"`
-	Precipitation *Quantiles     `json:"precipitation,omitempty"`
-	WindSpeed     *Quantiles     `json:"wind_speed,omitempty"`
-	WindDirection *CircularStats `json:"wind_direction,omitempty"`
-	SnowLevel     *Quantiles     `json:"snow_level,omitempty"`
-	SLR           *Quantiles     `json:"slr,omitempty"`
-	Snowfall      *Quantiles     `json:"snowfall,omitempty"`
-	Interpolated  *bool          `json:"interpolated,omitempty"`
+	ID               string         `json:"id"`
+	Temperature      *Quantiles     `json:"temperature,omitempty"`
+	Dewpoint         *Quantiles     `json:"dewpoint,omitempty"`
+	Precipitation    *Quantiles     `json:"precipitation,omitempty"`
+	WindSpeed        *Quantiles     `json:"wind_speed,omitempty"`
+	WindDirection    *CircularStats `json:"wind_direction,omitempty"`
+	SnowLevel        *Quantiles     `json:"snow_level,omitempty"`
+	SnowLevelWetBulb *Quantiles     `json:"snow_level_wet_bulb,omitempty"`
+	SLR              *Quantiles     `json:"slr,omitempty"`
+	Snowfall         *Quantiles     `json:"snowfall,omitempty"`
+	Interpolated     *bool          `json:"interpolated,omitempty"`
 }
 
 // DailyForecast summarises one local calendar date.
@@ -441,6 +506,40 @@ type DailyForecast struct {
 	StormOrientationDescription *string           `json:"storm_orientation_description,omitempty"`
 	Astro                       DailyAstro        `json:"astro"`
 	TemperatureClimatology      *DayClimatology   `json:"temperature_climatology,omitempty"`
+	// CoveredFrom is set only on a part day (the leading date of a run whose
+	// init falls after its local midnight): the instant from which the row's
+	// values describe the date.
+	CoveredFrom *time.Time `json:"covered_from,omitempty"`
+	// MeasuredPrecipitation is the radar-measured part of a leading day;
+	// nil otherwise.
+	MeasuredPrecipitation *MeasuredPrecipitation `json:"measured_precipitation,omitempty"`
+	// SnowCharacter is the day's snow character; nil on a day without snow.
+	SnowCharacter *SnowCharacter `json:"snow_character,omitempty"`
+	// SLR is the day's snow-to-liquid ratio; present exactly when
+	// SnowCharacter is.
+	SLR *float64 `json:"slr,omitempty"`
+	// SnowLevelRange is the snow level over the day's wet hours.
+	SnowLevelRange *SnowLevelRange `json:"snow_level_range,omitempty"`
+	// SnowLevelWetBulb is the day's snow level on the NWS scale (the 0.5 C
+	// wet-bulb height).
+	SnowLevelWetBulb *Quantiles `json:"snow_level_wet_bulb,omitempty"`
+	// SnowLevelWetBulbRange is SnowLevelRange on the NWS scale.
+	SnowLevelWetBulbRange *SnowLevelRange `json:"snow_level_wet_bulb_range,omitempty"`
+	// Normal is the date's climate normal at the location.
+	Normal *DayNormal `json:"normal,omitempty"`
+	// Departure is the day's departure from Normal.
+	Departure *DayDeparture `json:"departure,omitempty"`
+	// Percentile is how unusual the day is against its climatology.
+	Percentile *DayPercentile `json:"percentile,omitempty"`
+}
+
+// MeasuredPrecipitation is the precipitation the radar measured on a leading
+// day, between its local midnight and the run's init.
+type MeasuredPrecipitation struct {
+	// Amount is the measured precipitation, in the request's units.
+	Amount float64 `json:"amount"`
+	// Through is the end of the measured span.
+	Through time.Time `json:"through"`
 }
 
 // DailyWind summarises a day's wind (gusts when available).
@@ -470,13 +569,24 @@ type DayClimatology struct {
 // ElevationForecast is a forecast at one of a location's extra elevations
 // (ski areas: base, mid, summit).
 type ElevationForecast struct {
-	Name        string            `json:"name"`
-	Elevation   float64           `json:"elevation"`
+	Name string `json:"name"`
+	// DisplayName is what the place is called; nil where the catalog has no name.
+	DisplayName *string `json:"display_name,omitempty"`
+	// Height (JSON `elevation`) is the elevation, in the request's length units.
+	Height      float64           `json:"elevation"`
 	Lat         float64           `json:"lat"`
 	Lon         float64           `json:"lon"`
 	Hourly      []TimeSeriesPoint `json:"hourly,omitempty"`
 	Daily       []DailyForecast   `json:"daily,omitempty"`
 	SnowOutlook *SnowOutlook      `json:"snow_outlook,omitempty"`
+	// NearestSensors are this spot's own nearby observation sensors.
+	NearestSensors []NearestSensor `json:"nearest_sensors,omitempty"`
+	// PrecipitationOutlook holds rolling liquid totals at this elevation.
+	PrecipitationOutlook *PrecipOutlook `json:"precipitation_outlook,omitempty"`
+	// Plume holds this elevation's members in columns, with [MembersAsPlume].
+	Plume *MemberPlume `json:"plume,omitempty"`
+	// SnowOnGround is the modelled snow on the ground at this elevation.
+	SnowOnGround *SnowOnGround `json:"snow_on_ground,omitempty"`
 }
 
 // ResponseAttribution names the data sources a response drew on.

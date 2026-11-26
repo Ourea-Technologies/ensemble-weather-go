@@ -20,22 +20,22 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if c := now.Current; c != nil {
+	if c := now.Now; c != nil {
 		fmt.Printf("%s at %s: %s, %.1f %s (from %s)\n", now.Location.Name, c.Time.Format("15:04 MST"),
-			c.ConditionText, c.Temperature, now.Units.For(ew.Temperature).Symbol(), c.Source)
+			c.Text, c.Temperature, now.Units.For(ew.Temperature).Symbol(), c.Source)
 	} else {
 		fmt.Println("no current conditions right now")
 	}
 	for _, s := range now.Sensors {
-		fmt.Printf("sensor %s (%s) reported at %s\n", s.Name, s.Source, s.ObservationTime.Format("15:04 MST"))
+		fmt.Printf("sensor %s (%s) reported at %s\n", s.Name, s.Source, s.ObservedAt.Format("15:04 MST"))
 	}
 
 	alerts, err := client.Alerts(ctx, "or/mt-hood-meadows")
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("%d active alert(s)\n", alerts.AlertCount)
-	for _, a := range alerts.Alerts {
+	fmt.Printf("%d active alert(s)\n", alerts.Count)
+	for _, a := range alerts.Items {
 		fmt.Printf("  %s [%s]: %s (expires %s)\n", a.Event, a.Severity, a.Headline, a.Expires.Format("Mon 15:04 MST"))
 	}
 }

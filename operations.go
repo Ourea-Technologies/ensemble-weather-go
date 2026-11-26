@@ -4,6 +4,7 @@ package ensembleweather
 
 import (
 	"context"
+	"math"
 	"strings"
 	"time"
 )
@@ -26,6 +27,14 @@ var (
 	opCatalogStation   = operation{id: "getCatalogStation", open: true}
 	opRuns             = operation{id: "getAvailableRuns"}
 	opAttribution      = operation{id: "getAttribution", open: true}
+	opExplore          = operation{id: "explore"}
+	opComposition      = operation{id: "getComposition", open: true}
+	opSeason           = operation{id: "getLocationSeason"}
+	opSnowTrend        = operation{id: "getLocationSnowTrend"}
+	opSnowpack         = operation{id: "getLocationSnowpack"}
+	opSnowpackPlume    = operation{id: "getLocationSnowpackPlume"}
+	opAlertOutlines    = operation{id: "getAlertOutlines"}
+	opAvalancheZones   = operation{id: "getAvalancheZones"}
 )
 
 // Point is a coordinate, decimal degrees (WGS84, west negative). The SDK
@@ -77,8 +86,10 @@ type ForecastParams struct {
 	IncludePast bool
 	// Models adds per-model breakdowns (Pro).
 	Models bool
-	// Members adds per-member values (Free: the plume view).
-	Members bool
+	// Members adds per-member values: [MembersOn] in each hour, or
+	// [MembersAsPlume] as columns in Series.Plume. The zero value (or
+	// [MembersOff]) adds none; any other value is refused.
+	Members MembersMode
 	// Daily, Hourly and Nowcast default to true; set one to Ptr(false) to drop it.
 	Daily, Hourly, Nowcast *bool
 	// Elevations adds elevation forecasts: "all" or elevation names. Only
@@ -100,6 +111,21 @@ type ForecastParams struct {
 	// FeelsLike selects feels-like indices (default "nws", the only one).
 	FeelsLike []string
 }
+
+// MembersMode selects a forecast's per-member values (the members query
+// parameter, which takes true, false or "plume").
+type MembersMode string
+
+// The member modes.
+const (
+	// MembersOff adds no per-member values (the default; the zero value too).
+	MembersOff MembersMode = "false"
+	// MembersOn adds each hour's member values (TimeSeriesPoint.Members).
+	MembersOn MembersMode = "true"
+	// MembersAsPlume serves the members as columns in Series.Plume, instead
+	// of the hourly series and daily summaries.
+	MembersAsPlume MembersMode = "plume"
+)
 
 type forecastPlan struct {
 	q       query
@@ -126,7 +152,13 @@ func (c *Client) planForecast(op string, p *ForecastParams) (*forecastPlan, erro
 	q.intDefault("max_days", p.MaxDays, 0)
 	q.flag("include_past", p.IncludePast)
 	q.flag("models", p.Models)
-	q.flag("members", p.Members)
+	switch p.Members {
+	case "", MembersOff:
+	case MembersOn, MembersAsPlume:
+		q.set("members", string(p.Members))
+	default:
+		return nil, usageError(op, "Members %q must be MembersOff, MembersOn or MembersAsPlume", string(p.Members))
+	}
 	q.flagDefault("daily", p.Daily, true)
 	q.flagDefault("hourly", p.Hourly, true)
 	q.flagDefault("nowcast", p.Nowcast, true)
@@ -137,7 +169,7 @@ func (c *Client) planForecast(op string, p *ForecastParams) (*forecastPlan, erro
 	q.literal("prob", plan.chances.value)
 	q.literal("totals", plan.totals.value)
 	q.list("diagnostics", p.Diagnostics)
-	q.sortedList("include", p.Include)
+	q.list("include", p.Include)
 	if len(p.FeelsLike) != 1 || p.FeelsLike[0] != "nws" {
 		q.list("feels_like", p.FeelsLike)
 	}
@@ -283,9 +315,7 @@ func (c *Client) nearbyQuery(p *NearbyParams) *query {
 	q := &query{}
 	q.units(c.units(p.Units))
 	q.intDefault("limit", p.Limit, 3)
-	if p.RadiusKm != 0 && p.RadiusKm != 50 {
-		q.num("radius_km", p.RadiusKm)
-	}
+	q.numDefault("radius_km", p.RadiusKm, 50)
 	return q
 }
 
@@ -317,7 +347,7 @@ func (c *Client) GetPointNearby(ctx context.Context, at Point, params *NearbyPar
 	return &r, nil
 }
 
-// SearchParams are the filters of a location search.
+// SearchParams are the filters and order of a location search.
 type SearchParams struct {
 	// State filters by two-letter code or state name.
 	State string
@@ -327,6 +357,17 @@ type SearchParams struct {
 	Type LocationType
 	// Limit is the maximum number of hits (1..100; default 20).
 	Limit int
+	// Sort orders the hits by an explore metric instead of by relevance (the
+	// default, also the zero value); each hit then carries Explore.
+	Sort ExploreMetric
+	// Order is the metric order (default [OrderDesc]).
+	Order Order
+	// Near limits the hits to RadiusKm around a point (no elevation).
+	Near *Point
+	// RadiusKm is Near's radius (up to 1000; default 100).
+	RadiusKm float64
+	// Units overrides the client's unit system for the hits' values.
+	Units Units
 }
 
 // Search finds locations by free text (at least 2 characters). It is sent
@@ -337,10 +378,17 @@ func (c *Client) Search(ctx context.Context, text string, params *SearchParams) 
 	}
 	q := &query{}
 	q.set("q", text)
-	q.str("state", params.State)
+	q.str("state", normalizeState(params.State))
 	q.str("county", params.County)
 	q.str("type", string(params.Type))
 	q.intDefault("limit", params.Limit, 20)
+	q.strDefault("sort", string(params.Sort), "relevance")
+	q.strDefault("order", string(params.Order), string(OrderDesc))
+	if err := q.near(opSearch.id, params.Near); err != nil {
+		return nil, err
+	}
+	q.numDefault("radius_km", params.RadiusKm, 100)
+	q.units(c.units(params.Units))
 	var r SearchLocationsResponse
 	if err := c.get(ctx, opSearch, []string{"search", "locations"}, q, &r); err != nil {
 		return nil, err
@@ -476,8 +524,8 @@ func (c *Client) CatalogStations(ctx context.Context, params *CatalogStationsPar
 	for i, n := range params.Networks {
 		networks[i] = string(n)
 	}
-	q.sortedList("network", networks)
-	q.sortedList("capability", params.Capabilities)
+	q.list("network", networks)
+	q.list("capability", params.Capabilities)
 	q.str("status", string(params.Status))
 	q.intDefault("limit", params.Limit, 20)
 	q.str("cursor", params.Cursor)
@@ -518,4 +566,255 @@ func (c *Client) Attribution(ctx context.Context) (*AttributionRegistry, error) 
 		return nil, err
 	}
 	return &r, nil
+}
+
+// ExploreParams are the filters of a ranking. The zero value ranks every
+// place's primary point, largest first, 25 to a page, in the client's units.
+type ExploreParams struct {
+	// Order is the direction (default [OrderDesc], the largest first).
+	Order Order
+	// Type filters by location type.
+	Type LocationType
+	// State filters by two-letter code (lowercased) or state name.
+	State string
+	// Near limits the ranking to RadiusKm around a point (no elevation).
+	Near *Point
+	// RadiusKm is Near's radius (up to 1000; default 100).
+	RadiusKm float64
+	// ElevationMin and ElevationMax bound the ranked points' elevation, in
+	// the request's length units.
+	ElevationMin, ElevationMax *float64
+	// AllPoints ranks every named elevation of a place, not only its
+	// primary point (points=all).
+	AllPoints bool
+	// Limit is the page size (1..100; default 25).
+	Limit int
+	// Cursor is the previous page's NextCursor.
+	Cursor string
+	// Units overrides the client's unit system for this request.
+	Units Units
+}
+
+// Explore returns one page of places ranked by metric (snow, precipitation,
+// snow depth or season totals). Follow NextCursor for the next page.
+func (c *Client) Explore(ctx context.Context, metric ExploreMetric, params *ExploreParams) (*ExploreResponse, error) {
+	if metric == "" {
+		return nil, usageError(opExplore.id, "metric is required, for example ExploreSnow5d")
+	}
+	if params == nil {
+		params = &ExploreParams{}
+	}
+	q := &query{}
+	q.set("metric", string(metric))
+	q.strDefault("order", string(params.Order), string(OrderDesc))
+	q.str("type", string(params.Type))
+	q.str("state", normalizeState(params.State))
+	if err := q.near(opExplore.id, params.Near); err != nil {
+		return nil, err
+	}
+	q.numDefault("radius_km", params.RadiusKm, 100)
+	q.numPtr("elevation_min", params.ElevationMin)
+	q.numPtr("elevation_max", params.ElevationMax)
+	if params.AllPoints {
+		q.set("points", "all")
+	}
+	q.intDefault("limit", params.Limit, 25)
+	q.str("cursor", params.Cursor)
+	q.units(c.units(params.Units))
+	var r ExploreResponse
+	if err := c.get(ctx, opExplore, []string{"explore"}, q, &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// Composition returns the blend's served models and member counts. It is
+// sent without the API key, so the response is shared at the edge cache.
+func (c *Client) Composition(ctx context.Context) (*CompositionResponse, error) {
+	var r CompositionResponse
+	if err := c.get(ctx, opComposition, []string{"composition"}, nil, &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// SeasonParams are the options of a location's season to date.
+type SeasonParams struct {
+	// WaterYear is the water year by its ending year (2027 and later); 0
+	// means the current one.
+	WaterYear int
+	// Include opts in to extras: "daily" (SeasonResponse.Daily).
+	Include []string
+	// Units overrides the client's unit system for this request.
+	Units Units
+}
+
+// Season returns a named location's observed season-to-date precipitation
+// and snowfall.
+func (c *Client) Season(ctx context.Context, location string, params *SeasonParams) (*SeasonResponse, error) {
+	segs, err := splitLocation(opSeason.id, location)
+	if err != nil {
+		return nil, err
+	}
+	if params == nil {
+		params = &SeasonParams{}
+	}
+	q := &query{}
+	q.intDefault("water_year", params.WaterYear, 0)
+	q.list("include", params.Include)
+	q.units(c.units(params.Units))
+	var r SeasonResponse
+	if err := c.get(ctx, opSeason, append(segs, "season"), q, &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// SnowTrendParams are the options of a location's snow trend.
+type SnowTrendParams struct {
+	// Elevation is a named elevation of the location, such as "base"; empty
+	// means its primary point.
+	Elevation string
+	// Units overrides the client's unit system for this request.
+	Units Units
+}
+
+// SnowTrend returns each recent run's daily snowfall at a named location,
+// by source. It needs a Plus or Pro API key: anonymous and Free callers get
+// a [CategoryPermission] error with code [CodePlusRequired].
+func (c *Client) SnowTrend(ctx context.Context, location string, params *SnowTrendParams) (*SnowTrendResponse, error) {
+	segs, err := splitLocation(opSnowTrend.id, location)
+	if err != nil {
+		return nil, err
+	}
+	if params == nil {
+		params = &SnowTrendParams{}
+	}
+	q := &query{}
+	q.str("elevation", params.Elevation)
+	q.units(c.units(params.Units))
+	var r SnowTrendResponse
+	if err := c.get(ctx, opSnowTrend, append(segs, "snow-trend"), q, &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// SnowpackParams are the options of a location's snowpack forecast and
+// snow-depth plume.
+type SnowpackParams struct {
+	// Units overrides the client's unit system for this request.
+	Units Units
+}
+
+// Snowpack returns the snowpack forecast of a named location's spots. It is
+// a beta: the body carries Beta true, and fields may be added.
+func (c *Client) Snowpack(ctx context.Context, location string, params *SnowpackParams) (*SnowpackResponse, error) {
+	segs, err := splitLocation(opSnowpack.id, location)
+	if err != nil {
+		return nil, err
+	}
+	var r SnowpackResponse
+	if err := c.get(ctx, opSnowpack, append(segs, "snowpack"), c.snowpackQuery(params), &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// SnowpackPlume returns a named location's snow-depth plume. It is a beta:
+// the body carries Beta true, and fields may be added.
+func (c *Client) SnowpackPlume(ctx context.Context, location string, params *SnowpackParams) (*SnowpackPlumeResponse, error) {
+	segs, err := splitLocation(opSnowpackPlume.id, location)
+	if err != nil {
+		return nil, err
+	}
+	var r SnowpackPlumeResponse
+	if err := c.get(ctx, opSnowpackPlume, append(segs, "snowpack", "plume"), c.snowpackQuery(params), &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+func (c *Client) snowpackQuery(p *SnowpackParams) *query {
+	q := &query{}
+	var u Units
+	if p != nil {
+		u = p.Units
+	}
+	q.units(c.units(u))
+	return q
+}
+
+// BBox is a bounding box in decimal degrees (WGS84, west negative).
+type BBox struct {
+	West, South, East, North float64
+}
+
+// AlertOutlinesParams filter the alert outlines.
+type AlertOutlinesParams struct {
+	// Classes keeps the outlines of these classes only; empty keeps all.
+	Classes []AlertClass
+	// BBox keeps the outlines that intersect a box; nil keeps all.
+	BBox *BBox
+}
+
+// AlertOutlines returns the outlines of the active NWS winter and wind
+// alerts as a GeoJSON FeatureCollection. Its keys are the API's, untouched,
+// so it can go straight to a map library; geometries are as served.
+func (c *Client) AlertOutlines(ctx context.Context, params *AlertOutlinesParams) (*AlertOutlineCollection, error) {
+	q := &query{}
+	if params != nil {
+		classes := make([]string, len(params.Classes))
+		for i, k := range params.Classes {
+			classes[i] = string(k)
+		}
+		q.list("class", classes)
+		if b := params.BBox; b != nil {
+			if err := checkBBox(opAlertOutlines.id, *b); err != nil {
+				return nil, err
+			}
+			q.numbers("bbox", b.West, b.South, b.East, b.North)
+		}
+	}
+	var r AlertOutlineCollection
+	if err := c.get(ctx, opAlertOutlines, []string{"alerts", "outlines"}, q, &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// AvalancheZones returns the avalanche centers' forecast zones, each with
+// today's published danger rating, as a GeoJSON FeatureCollection. Its keys
+// are the API's, untouched (Properties.ForecastURL stays forecast_url).
+func (c *Client) AvalancheZones(ctx context.Context) (*AvalancheZoneCollection, error) {
+	var r AvalancheZoneCollection
+	if err := c.get(ctx, opAvalancheZones, []string{"avalanche", "zones"}, nil, &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+func finite(vs ...float64) bool {
+	for _, v := range vs {
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return false
+		}
+	}
+	return true
+}
+
+func checkLatLon(lat, lon float64) bool {
+	return finite(lat, lon) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180
+}
+
+func checkBBox(op string, b BBox) error {
+	switch {
+	case !checkLatLon(b.South, b.West) || !checkLatLon(b.North, b.East):
+		return usageError(op, "bbox %v is outside -180..180 longitude, -90..90 latitude", b)
+	case b.West > b.East:
+		return usageError(op, "bbox west %v is east of east %v", b.West, b.East)
+	case b.South > b.North:
+		return usageError(op, "bbox south %v is north of north %v", b.South, b.North)
+	}
+	return nil
 }

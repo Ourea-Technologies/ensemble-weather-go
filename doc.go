@@ -21,9 +21,21 @@
 //
 // Pass a key with [WithAPIKey] or set OUREA_API_KEY. With no key, calls are
 // anonymous (the Free tier). Forecasts at coordinates ([Client.GetPointForecast])
-// need a Pro key. Search, catalog details and attribution are by default sent
+// need a Pro key, and [Client.SnowTrend] a Plus or Pro key. Search, catalog
+// details, composition and attribution are by default sent
 // without the key so their responses are shared at the edge cache; use
 // [WithKeyOnOpenRoutes] to attribute every request to the key.
+//
+// # Names
+//
+// Struct fields are the API's JSON names in Go case, except the JSON fields
+// that repeat a word of the type holding them, which take the names of the
+// table shared by every Ourea SDK (ensemble-weather-spec BEHAVIOR.md 3.0):
+// [ForecastResponse.Series] is JSON "forecast", [CurrentResponse.Now] is
+// "current", [ProbabilityResult.Value] is "probability", and so on. Each
+// such field's doc comment names its JSON field, and the struct tags keep
+// the JSON names. The GeoJSON routes ([Client.AlertOutlines],
+// [Client.AvalancheZones]) keep the API's keys untouched.
 //
 // # Errors and retries
 //
@@ -42,7 +54,7 @@
 // # Paging
 //
 // List calls return one page and a NextCursor. On Go 1.23 and later,
-// [Client.AllCatalogLocations] and its siblings return an iter.Seq2 that
+// [Client.AllCatalogLocations], [Client.AllExplore] and their siblings return an iter.Seq2 that
 // follows the cursor for you.
 //
 // Guides: https://docs.oureawx.com and https://docs.oureawx.com/go.

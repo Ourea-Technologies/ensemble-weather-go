@@ -33,8 +33,8 @@ func main() {
 
 	for _, p := range f.Probabilities {
 		chance := "not covered by this forecast" // absent, never 0
-		if p.Probability != nil {
-			chance = fmt.Sprintf("%.0f%%", *p.Probability*100)
+		if p.Value != nil {
+			chance = fmt.Sprintf("%.0f%%", *p.Value*100)
 		}
 		fmt.Printf("%s %s %g %s, hours %d-%d (%s): %s, %d members\n",
 			p.Variable, p.Op, p.Threshold, p.ThresholdUnit.Symbol(),

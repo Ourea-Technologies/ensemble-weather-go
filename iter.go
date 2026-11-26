@@ -38,3 +38,11 @@ func (c *Client) AllCatalogLocations(ctx context.Context, params *CatalogLocatio
 func (c *Client) AllCatalogStations(ctx context.Context, params *CatalogStationsParams) iter.Seq2[CatalogStation, error] {
 	return func(yield func(CatalogStation, error) bool) { c.walkCatalogStations(ctx, params, yield) }
 }
+
+// AllExplore iterates over every place metric ranks, in rank order,
+// following NextCursor page by page. A failed page ends the iteration with
+// its error. It needs Go 1.23; on older Go, call [Client.Explore] with the
+// cursor.
+func (c *Client) AllExplore(ctx context.Context, metric ExploreMetric, params *ExploreParams) iter.Seq2[ExploreItem, error] {
+	return func(yield func(ExploreItem, error) bool) { c.walkExplore(ctx, metric, params, yield) }
+}

@@ -37,7 +37,7 @@ func (c *Client) walkLocations(ctx context.Context, params *LocationsParams, yie
 		if err != nil {
 			return nil, nil, err
 		}
-		return page.Locations, page.NextCursor, nil
+		return page.Items, page.NextCursor, nil
 	}, yield)
 }
 
@@ -64,6 +64,21 @@ func (c *Client) walkCatalogStations(ctx context.Context, params *CatalogStation
 	paginate(ctx, p.Cursor, func(ctx context.Context, cursor string) ([]CatalogStation, *string, error) {
 		p.Cursor = cursor
 		page, err := c.CatalogStations(ctx, &p)
+		if err != nil {
+			return nil, nil, err
+		}
+		return page.Items, page.NextCursor, nil
+	}, yield)
+}
+
+func (c *Client) walkExplore(ctx context.Context, metric ExploreMetric, params *ExploreParams, yield func(ExploreItem, error) bool) {
+	p := ExploreParams{}
+	if params != nil {
+		p = *params
+	}
+	paginate(ctx, p.Cursor, func(ctx context.Context, cursor string) ([]ExploreItem, *string, error) {
+		p.Cursor = cursor
+		page, err := c.Explore(ctx, metric, &p)
 		if err != nil {
 			return nil, nil, err
 		}

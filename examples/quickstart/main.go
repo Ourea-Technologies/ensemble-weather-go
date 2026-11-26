@@ -26,15 +26,15 @@ func main() {
 	}
 
 	unit := f.Units.For(ew.Temperature).Symbol()
-	for _, hour := range f.Forecast.Timeseries {
+	for _, hour := range f.Series.Timeseries {
 		if r, ok := hour.Ensemble.Temperature.Range80(); ok {
 			fmt.Printf("%s  %s %s\n", hour.ValidTime.Format("Mon 15:04 MST"), r, unit)
 		}
 	}
 	for _, c := range f.Probabilities {
-		if c.Probability != nil {
+		if c.Value != nil {
 			fmt.Printf("Chance of >= %g %s of snow in %d-%d h: %.0f%% (%d members)\n",
-				c.Threshold, c.ThresholdUnit.Symbol(), c.WindowStartHours, c.WindowEndHours, *c.Probability*100, c.Members)
+				c.Threshold, c.ThresholdUnit.Symbol(), c.WindowStartHours, c.WindowEndHours, *c.Value*100, c.Members)
 		}
 	}
 }

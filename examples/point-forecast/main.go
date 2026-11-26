@@ -30,7 +30,7 @@ func main() {
 	fmt.Printf("%s, %d members from %d models (run %s)\n",
 		f.Location.Name, f.ModelRun.TotalMembers, len(f.ModelRun.Models), f.ModelRun.InitializedAt.Format("2006-01-02 15Z"))
 	wind := f.Units.For(ew.WindSpeed).Symbol()
-	for _, hour := range f.Forecast.Timeseries {
+	for _, hour := range f.Series.Timeseries {
 		median, ok := hour.Ensemble.WindSpeed.Median()
 		if !ok {
 			continue
