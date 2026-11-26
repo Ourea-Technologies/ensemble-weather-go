@@ -97,22 +97,39 @@ not dependencies of either module.
 
 ## Releasing
 
-A tag is the release: Go has no package registry upload.
+A tag is the release: Go has no package registry upload. The module is
+fetched from this repository through the vanity path
+`oureawx.com/go/ensemble-weather`, and pkg.go.dev lists a version once the
+module proxy has fetched it.
 
-1. **First release only:** the vanity import path must already resolve.
-   `https://oureawx.com/go/ensemble-weather?go-get=1` must serve
-   `<meta name="go-import" content="oureawx.com/go/ensemble-weather git https://github.com/Ourea-Technologies/ensemble-weather-go">`
-   (and a matching `go-source` tag). Check with
-   `curl -s 'https://oureawx.com/go/ensemble-weather?go-get=1' | grep go-import`.
-   Until it does, `go get` fails and the proxy warm-up in `release.yml` fails.
-2. Move the `[Unreleased]` notes to a new version section in `CHANGELOG.md`
-   and bump `Version` in `version.go`; merge to `main`.
+1. **Before the first release:**
+   - The vanity import path must resolve.
+     `https://oureawx.com/go/ensemble-weather?go-get=1` must serve
+     `<meta name="go-import" content="oureawx.com/go/ensemble-weather git https://github.com/Ourea-Technologies/ensemble-weather-go">`
+     (and a matching `go-source` tag). Check with
+     `curl -s 'https://oureawx.com/go/ensemble-weather?go-get=1' | grep go-import`.
+     Until it does, `go get` fails and the proxy warm-up in `release.yml` fails.
+   - Create the `release` environment (Settings, Environments): a required
+     reviewer, and a deployment rule for tags `v*` only. `release.yml`'s
+     GitHub-release job runs in it. (A run that names a missing environment
+     creates it unprotected, so create it first.)
+2. Date the version's section in `CHANGELOG.md` (`## [X.Y.Z] - YYYY-MM-DD`;
+   `release.yml` refuses `unreleased`) and check that `Version` in
+   `version.go` is `X.Y.Z`; merge to `main`.
 3. Tag `main`: `git tag -s vX.Y.Z -m vX.Y.Z && git push origin vX.Y.Z`.
-4. `release.yml` re-runs the gates, creates the GitHub release from the
-   changelog section with a source archive and its build-provenance
-   attestation, and warms the module proxy
-   (`GOPROXY=proxy.golang.org go list -m oureawx.com/go/ensemble-weather@vX.Y.Z`)
-   so pkg.go.dev picks it up.
+   A tag is permanent: the module proxy and the checksum database keep
+   what they first fetched, so a moved or deleted tag cannot be re-used;
+   fix forward with the next patch version.
+4. `release.yml` re-runs the gates, checks the tag against `version.go` and
+   the changelog date, creates the GitHub release from the changelog
+   section with a source archive and its build-provenance attestation
+   (after the environment's approval), and warms the module proxy
+   (`GOPROXY=proxy.golang.org go list -m oureawx.com/go/ensemble-weather@vX.Y.Z`).
+5. Check pkg.go.dev: https://pkg.go.dev/oureawx.com/go/ensemble-weather@vX.Y.Z
+   should show the version and the BSD-2-Clause licence within minutes. If
+   it does not, request it there ("Request" on the not-found page) or run
+   `GOPROXY=https://proxy.golang.org GO111MODULE=on go get oureawx.com/go/ensemble-weather@vX.Y.Z`
+   in any module.
 
 ## Code of conduct
 
