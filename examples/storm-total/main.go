@@ -29,7 +29,7 @@ func main() {
 	}
 
 	for _, t := range f.WindowTotals {
-		fmt.Printf("%s, hours %d-%d: ", t.Variable, t.WindowStartHours, t.WindowEndHours)
+		fmt.Printf("%s, hours %d-%d: ", t.Variable, t.StartHours, t.EndHours)
 		if t.Quantiles == nil {
 			fmt.Println("not covered by this forecast")
 			continue

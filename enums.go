@@ -92,6 +92,8 @@ const (
 	ConditionChanceSnow               Condition = "chance_snow"
 	ConditionSnowLikely               Condition = "snow_likely"
 	ConditionSnow                     Condition = "snow"
+	ConditionLightSnow                Condition = "light_snow"
+	ConditionHeavySnow                Condition = "heavy_snow"
 	ConditionSlightChanceFreezingRain Condition = "slight_chance_freezing_rain"
 	ConditionChanceFreezingRain       Condition = "chance_freezing_rain"
 	ConditionFreezingRainLikely       Condition = "freezing_rain_likely"
@@ -106,7 +108,7 @@ func (c Condition) IsKnown() bool {
 		ConditionShowers, ConditionRain, ConditionLightRain, ConditionHeavyRain,
 		ConditionSlightChanceRainSnowMix, ConditionChanceRainSnowMix, ConditionRainSnowMixLikely,
 		ConditionRainSnowMix, ConditionSlightChanceSnow, ConditionChanceSnow, ConditionSnowLikely,
-		ConditionSnow, ConditionSlightChanceFreezingRain, ConditionChanceFreezingRain,
+		ConditionSnow, ConditionLightSnow, ConditionHeavySnow, ConditionSlightChanceFreezingRain, ConditionChanceFreezingRain,
 		ConditionFreezingRainLikely, ConditionFreezingRain)
 }
 
@@ -134,6 +136,8 @@ const (
 	IconHeavyRain              ConditionIcon = "heavy_rain"
 	IconRainSnowMix            ConditionIcon = "rain_snow_mix"
 	IconSnow                   ConditionIcon = "snow"
+	IconLightSnow              ConditionIcon = "light_snow"
+	IconHeavySnow              ConditionIcon = "heavy_snow"
 	IconFreezingRain           ConditionIcon = "freezing_rain"
 	IconNightClear             ConditionIcon = "night_clear"
 	IconNightMostlyClear       ConditionIcon = "night_mostly_clear"
@@ -153,6 +157,8 @@ const (
 	IconNightHeavyRain         ConditionIcon = "night_heavy_rain"
 	IconNightRainSnowMix       ConditionIcon = "night_rain_snow_mix"
 	IconNightSnow              ConditionIcon = "night_snow"
+	IconNightLightSnow         ConditionIcon = "night_light_snow"
+	IconNightHeavySnow         ConditionIcon = "night_heavy_snow"
 	IconNightFreezingRain      ConditionIcon = "night_freezing_rain"
 )
 
@@ -161,11 +167,12 @@ func (v ConditionIcon) IsKnown() bool {
 	return oneOf(v, IconSunny, IconMostlySunny, IconPartlyCloudy, IconMostlyCloudy, IconCloudy,
 		IconSunChanceShowers, IconSunShowersLikely, IconSunShowers, IconChanceShowers, IconChanceRain,
 		IconShowersLikely, IconRainLikely, IconShowers, IconLightRain, IconRain, IconHeavyRain,
-		IconRainSnowMix, IconSnow, IconFreezingRain, IconNightClear, IconNightMostlyClear,
+		IconRainSnowMix, IconSnow, IconLightSnow, IconHeavySnow, IconFreezingRain, IconNightClear, IconNightMostlyClear,
 		IconNightPartlyCloudy, IconNightMostlyCloudy, IconNightCloudy, IconNightMoonChanceShowers,
 		IconNightMoonShowersLikely, IconNightMoonShowers, IconNightChanceShowers, IconNightChanceRain,
 		IconNightShowersLikely, IconNightRainLikely, IconNightShowers, IconNightLightRain, IconNightRain,
-		IconNightHeavyRain, IconNightRainSnowMix, IconNightSnow, IconNightFreezingRain)
+		IconNightHeavyRain, IconNightRainSnowMix, IconNightSnow, IconNightLightSnow, IconNightHeavySnow,
+		IconNightFreezingRain)
 }
 
 // PrecipKind is a precipitation type.
@@ -201,19 +208,23 @@ func (s NowcastSource) IsKnown() bool {
 	return oneOf(s, NowcastObservation, NowcastRadar, NowcastCloud, NowcastNearestSensors)
 }
 
-// MembersView says which per-member view a forecast carries.
+// MembersView names the member set a forecast's per-member values carry,
+// which follows the caller's tier (it is not the layout: [MembersAsPlume]
+// asks for columns).
 type MembersView string
 
 // The member views.
 const (
-	// MembersPlume (Free) withholds wind_speed, wind_direction and slr.
+	// MembersPool (anonymous and Free) is the pooled member set.
+	MembersPool MembersView = "pool"
+	// MembersPlume withholds wind_speed, wind_direction and slr.
 	MembersPlume MembersView = "plume"
 	// MembersFull (Pro) carries every member variable.
 	MembersFull MembersView = "full"
 )
 
 // IsKnown reports whether v is a member view this SDK knows.
-func (v MembersView) IsKnown() bool { return oneOf(v, MembersPlume, MembersFull) }
+func (v MembersView) IsKnown() bool { return oneOf(v, MembersPool, MembersPlume, MembersFull) }
 
 // CurrentSource says what the current-conditions block was built from.
 type CurrentSource string
@@ -250,6 +261,7 @@ const (
 	SourcePeer        SourceKind = "peer"
 	SourceObservation SourceKind = "observation"
 	SourceAlerts      SourceKind = "alerts"
+	SourceAvalanche   SourceKind = "avalanche_forecast"
 	SourceClimatology SourceKind = "climatology"
 	SourceTerrain     SourceKind = "terrain"
 	SourcePlaces      SourceKind = "places"
@@ -258,7 +270,7 @@ const (
 
 // IsKnown reports whether k is a source kind this SDK knows.
 func (k SourceKind) IsKnown() bool {
-	return oneOf(k, SourceModel, SourcePeer, SourceObservation, SourceAlerts, SourceClimatology,
+	return oneOf(k, SourceModel, SourcePeer, SourceObservation, SourceAlerts, SourceAvalanche, SourceClimatology,
 		SourceTerrain, SourcePlaces, SourceBasemap)
 }
 
@@ -492,6 +504,8 @@ const (
 	NetworkMADIS           StationNetwork = "madis"
 	NetworkNWAC            StationNetwork = "nwac"
 	NetworkMTMesonet       StationNetwork = "mt_mesonet"
+	NetworkRainGauge       StationNetwork = "rain_gauge"
+	NetworkSURFRAD         StationNetwork = "surfrad"
 )
 
 // IsKnown reports whether v is a network this SDK knows.
@@ -502,7 +516,7 @@ func (v StationNetwork) IsKnown() bool {
 		NetworkAgrimet, NetworkAgweathernet, NetworkCoCoRaHS, NetworkCOOP, NetworkUSGS, NetworkTempest,
 		NetworkDavis, NetworkWxflow, NetworkCDEC, NetworkCIMIS, NetworkMesonetOregon,
 		NetworkMesonetSynoptic, NetworkMesonetOther, NetworkNDBCBuoy, NetworkOther, NetworkHADS,
-		NetworkMADIS, NetworkNWAC, NetworkMTMesonet)
+		NetworkMADIS, NetworkNWAC, NetworkMTMesonet, NetworkRainGauge, NetworkSURFRAD)
 }
 
 // StationStatus is an observation station's live-feed status.
@@ -561,3 +575,97 @@ const (
 func (v NullReason) IsKnown() bool {
 	return oneOf(v, NullWindowNotCovered, NullTooFewMembers, NullVariableUnavailable)
 }
+
+// SnowCharacter is the character of an hour's or a day's snow.
+type SnowCharacter string
+
+// The snow characters: wet first (wetness comes first), then the density
+// classes from densest to driest.
+const (
+	SnowWet     SnowCharacter = "wet"
+	SnowDense   SnowCharacter = "dense"
+	SnowAverage SnowCharacter = "average"
+	SnowDry     SnowCharacter = "dry"
+	SnowVeryDry SnowCharacter = "very_dry"
+)
+
+// IsKnown reports whether v is a snow character this SDK knows.
+func (v SnowCharacter) IsKnown() bool {
+	return oneOf(v, SnowWet, SnowDense, SnowAverage, SnowDry, SnowVeryDry)
+}
+
+// AlertClass is the class of an alert outline, and a filter of
+// [Client.AlertOutlines].
+type AlertClass string
+
+// The alert classes.
+const (
+	AlertWind   AlertClass = "wind"
+	AlertWinter AlertClass = "winter"
+)
+
+// IsKnown reports whether v is an alert class this SDK knows.
+func (v AlertClass) IsKnown() bool { return oneOf(v, AlertWind, AlertWinter) }
+
+// PassStatusLevel is a mountain pass's official road status, least to most
+// restrictive.
+type PassStatusLevel string
+
+// The pass status levels.
+const (
+	PassOpen     PassStatusLevel = "none"
+	PassAdvisory PassStatusLevel = "advisory"
+	PassTraction PassStatusLevel = "traction"
+	PassR1       PassStatusLevel = "r1"
+	PassR2       PassStatusLevel = "r2"
+	PassR3       PassStatusLevel = "r3"
+	PassChains   PassStatusLevel = "chains"
+	PassClosed   PassStatusLevel = "closed"
+)
+
+// IsKnown reports whether v is a status level this SDK knows.
+func (v PassStatusLevel) IsKnown() bool {
+	return oneOf(v, PassOpen, PassAdvisory, PassTraction, PassR1, PassR2, PassR3, PassChains, PassClosed)
+}
+
+// ExploreMetric is what [Client.Explore] ranks places by, and a
+// [SearchParams.Sort].
+type ExploreMetric string
+
+// The explore metrics.
+const (
+	ExploreBaseDepth             ExploreMetric = "base_depth"
+	ExploreNewSnow24h            ExploreMetric = "new_snow_24h"
+	ExploreSnowToday             ExploreMetric = "snow_today"
+	ExploreSnow5d                ExploreMetric = "snow_5d"
+	ExploreSnow10d               ExploreMetric = "snow_10d"
+	ExploreSnow14d               ExploreMetric = "snow_14d"
+	ExplorePrecipToday           ExploreMetric = "precip_today"
+	ExplorePrecip5d              ExploreMetric = "precip_5d"
+	ExplorePrecip10d             ExploreMetric = "precip_10d"
+	ExplorePrecip14d             ExploreMetric = "precip_14d"
+	ExploreSeasonPrecip          ExploreMetric = "season_precip"
+	ExploreSeasonPrecipPctNormal ExploreMetric = "season_precip_pct_normal"
+	ExploreSeasonSnow            ExploreMetric = "season_snow"
+)
+
+// IsKnown reports whether m is a metric this SDK knows.
+func (m ExploreMetric) IsKnown() bool {
+	return oneOf(m, ExploreBaseDepth, ExploreNewSnow24h, ExploreSnowToday, ExploreSnow5d, ExploreSnow10d,
+		ExploreSnow14d, ExplorePrecipToday, ExplorePrecip5d, ExplorePrecip10d, ExplorePrecip14d,
+		ExploreSeasonPrecip, ExploreSeasonPrecipPctNormal, ExploreSeasonSnow)
+}
+
+// Order is a ranking's direction.
+type Order string
+
+// The orders.
+const (
+	// OrderDesc ranks the largest value first (the default).
+	OrderDesc Order = "desc"
+	// OrderAsc ranks the smallest value first.
+	OrderAsc Order = "asc"
+)
+
+// IsKnown reports whether o is an order this SDK knows.
+func (o Order) IsKnown() bool { return oneOf(o, OrderDesc, OrderAsc) }

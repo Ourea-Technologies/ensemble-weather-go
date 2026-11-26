@@ -44,7 +44,8 @@ func formatNumber(v float64) string { return strconv.FormatFloat(v, 'f', -1, 64)
 
 type param struct {
 	name, value string
-	keep        string // bytes sent literally (":," for prob and totals)
+	keep        string   // bytes sent literally (":," for prob and totals)
+	items       []string // a comma list: each item encoded, the commas literal
 }
 
 // query builds a canonical query string: each parameter at most once, none
@@ -70,22 +71,28 @@ func (q *query) strDefault(name, value, def string) {
 	}
 }
 
-// list sets a comma-joined list unless it is empty.
+// list sets a comma list in the server's canonical form (BEHAVIOR 3.1 rule
+// 5) unless it is empty: sorted, de-duplicated, each item percent-encoded
+// and the commas between items literal (%2C would be another edge-cache
+// entry).
 func (q *query) list(name string, values []string) {
-	if len(values) > 0 {
-		q.set(name, strings.Join(values, ","))
-	}
-}
-
-// sortedList sets a comma-joined list, sorted and de-duplicated (the
-// server's canonical form), unless it is empty.
-func (q *query) sortedList(name string, values []string) {
 	if len(values) == 0 {
 		return
 	}
 	vs := append([]string(nil), values...)
 	sort.Strings(vs)
-	q.list(name, slices.Compact(vs))
+	q.params = append(q.params, param{name: name, items: slices.Compact(vs)})
+}
+
+// numbers sets a fixed-order tuple of numbers, such as near (lat,lon) or
+// bbox (west,south,east,north): each number by the shortest-decimal rule,
+// joined by literal commas.
+func (q *query) numbers(name string, vs ...float64) {
+	items := make([]string, len(vs))
+	for i, v := range vs {
+		items[i] = formatNumber(v)
+	}
+	q.params = append(q.params, param{name: name, items: items})
 }
 
 // intDefault sets an integer unless it is 0 (unset) or the route's default.
@@ -96,6 +103,29 @@ func (q *query) intDefault(name string, v, def int) {
 }
 
 func (q *query) num(name string, v float64) { q.set(name, formatNumber(v)) }
+
+// numDefault sets a number unless it is 0 (unset) or the route's default.
+func (q *query) numDefault(name string, v, def float64) {
+	if v != 0 && v != def {
+		q.num(name, v)
+	}
+}
+
+// near sets near=lat,lon (literal comma) from a point, refusing an
+// elevation or an out-of-range coordinate.
+func (q *query) near(op string, p *Point) error {
+	if p == nil {
+		return nil
+	}
+	if p.ElevationM != nil {
+		return usageError(op, "near takes no elevation")
+	}
+	if !checkLatLon(p.Lat, p.Lon) {
+		return usageError(op, "near (%v, %v) is outside -90..90 latitude, -180..180 longitude", p.Lat, p.Lon)
+	}
+	q.numbers("near", p.Lat, p.Lon)
+	return nil
+}
 
 func (q *query) numPtr(name string, v *float64) {
 	if v != nil {
@@ -145,6 +175,15 @@ func (q *query) encode() string {
 		}
 		b.WriteString(escape(p.name, ""))
 		b.WriteByte('=')
+		if p.items != nil {
+			for j, it := range p.items {
+				if j > 0 {
+					b.WriteByte(',')
+				}
+				b.WriteString(escape(it, ""))
+			}
+			continue
+		}
 		b.WriteString(escape(p.value, p.keep))
 	}
 	return b.String()

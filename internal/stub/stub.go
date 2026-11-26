@@ -89,6 +89,26 @@ func serve(w http.ResponseWriter, r *http.Request) {
 		write(w, r, false, body("catalog-detail.json"))
 	case path == "attribution":
 		write(w, r, false, body("attribution.json"))
+	case path == "composition":
+		write(w, r, false, body("composition.json"))
+	case path == "explore":
+		write(w, r, keyed, body("explore.json"))
+	case path == "alerts/outlines":
+		write(w, r, keyed, body("alert-outlines.json"))
+	case path == "avalanche/zones":
+		write(w, r, keyed, body("avalanche-zones.json"))
+	case len(parts) == 4 && parts[0] == "locations" && parts[3] == "season":
+		write(w, r, keyed, body("season.json"))
+	case len(parts) == 4 && parts[0] == "locations" && parts[3] == "snow-trend":
+		if !keyed {
+			writeError(w, 403, "PLUS_REQUIRED", "The snow trend needs a Plus or Pro API key.")
+			return
+		}
+		write(w, r, keyed, body("snow-trend.json"))
+	case len(parts) == 4 && parts[0] == "locations" && parts[3] == "snowpack":
+		write(w, r, keyed, body("snowpack.json"))
+	case len(parts) == 5 && parts[0] == "locations" && parts[3] == "snowpack" && parts[4] == "plume":
+		write(w, r, keyed, body("snowpack-plume.json"))
 	default:
 		writeError(w, 404, "NOT_FOUND", "No route "+r.URL.Path+".")
 	}

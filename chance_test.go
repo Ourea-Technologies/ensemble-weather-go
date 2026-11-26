@@ -149,8 +149,8 @@ func TestChanceResultsMapBack(t *testing.T) {
 	}
 	// Matched by the echoed term, not by position (the body lists them in
 	// another order); a null answer keeps its reason.
-	if len(f.Probabilities) != 3 || *f.Probabilities[0].Probability != 0.9 || f.Probabilities[1].Probability != nil ||
-		*f.Probabilities[1].NullReason != NullWindowNotCovered || *f.Probabilities[2].Probability != 0.9 {
+	if len(f.Probabilities) != 3 || *f.Probabilities[0].Value != 0.9 || f.Probabilities[1].Value != nil ||
+		*f.Probabilities[1].NullReason != NullWindowNotCovered || *f.Probabilities[2].Value != 0.9 {
 		t.Fatalf("probabilities = %+v", f.Probabilities)
 	}
 	if f.Probabilities[1].ThresholdUnit != UnitInch || f.Probabilities[0].ThresholdUnit != UnitFahrenheit {

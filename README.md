@@ -14,7 +14,7 @@ Official Go SDK for the [Ourea](https://oureawx.com) probabilistic weather API.
 ## Install
 
 ```sh
-go get oureawx.com/go/ensemble-weather
+go get oureawx.com/go/ensemble-weather@v0.1.0
 ```
 
 ## Quickstart
@@ -48,15 +48,15 @@ func main() {
 	}
 
 	unit := f.Units.For(ew.Temperature).Symbol()
-	for _, hour := range f.Forecast.Timeseries {
+	for _, hour := range f.Series.Timeseries {
 		if r, ok := hour.Ensemble.Temperature.Range80(); ok {
 			fmt.Printf("%s  %s %s\n", hour.ValidTime.Format("Mon 15:04 MST"), r, unit)
 		}
 	}
 	for _, c := range f.Probabilities {
-		if c.Probability != nil {
+		if c.Value != nil {
 			fmt.Printf("Chance of >= %g %s of snow in %d-%d h: %.0f%% (%d members)\n",
-				c.Threshold, c.ThresholdUnit.Symbol(), c.WindowStartHours, c.WindowEndHours, *c.Probability*100, c.Members)
+				c.Threshold, c.ThresholdUnit.Symbol(), c.WindowStartHours, c.WindowEndHours, *c.Value*100, c.Members)
 		}
 	}
 }
@@ -79,11 +79,12 @@ client := ew.NewClient(ew.WithAPIKey("ow_..."))
 | Named-location forecasts, current conditions, alerts | yes, 10-day (240 h) horizon | yes, 15-day (360 h) horizon |
 | Forecasts and current conditions at coordinates | no | yes |
 | Per-model breakdowns, historical runs | no | yes |
-| Ensemble members | plume view | every variable |
+| Ensemble members | pooled view | every variable |
+| Snow trend (`SnowTrend`) | no (`PLUS_REQUIRED`; a Plus key works) | yes |
 
 Plans and limits: https://oureawx.com/pricing. The key is sent only as
 `X-API-Key`, only to the configured base URL, and never appears in errors,
-logs or `fmt` output. Search, catalog details and attribution are sent
+logs or `fmt` output. Search, catalog details, composition and attribution are sent
 without the key so every caller shares one edge-cache entry;
 `WithKeyOnOpenRoutes()` sends it there too.
 
@@ -106,7 +107,7 @@ f, err := client.Forecast(ctx, "or/mt-hood-meadows", &ew.ForecastParams{
 	},
 })
 // f.Probabilities[i] answers Chances[i] (matched by the term the server echoes, never by position);
-// Probability is nil (never 0) when the server cannot answer, with the reason in NullReason.
+// Value is nil (never 0) when the server cannot answer, with the reason in NullReason.
 ```
 
 **A window total**, the distribution of each member's own total:
@@ -126,7 +127,7 @@ if q := f.WindowTotals[0].Quantiles; q != nil {
 absent), with the served ranges as views:
 
 ```go
-t := f.Forecast.Timeseries[0].Ensemble.Temperature
+t := f.Series.Timeseries[0].Ensemble.Temperature
 median, ok := t.Median() // p50: the median, not "the forecast"
 r80, ok := t.Range80()   // p10..p90
 r50, ok := t.Range50()   // p25..p75
@@ -143,6 +144,83 @@ converted: choose the unit system and the server converts.
 | `ew.UnitsImperial` | °F | in | mph | ft |
 | `ew.UnitsKelvin` | K | mm | m/s | m |
 
+## Names that differ from the API's JSON
+
+Struct fields are the JSON names in Go case (`valid_time` is `ValidTime`),
+except where a JSON field repeats a word of the type holding it and would
+read twice (`f.Forecast.Forecast`, `p.Probability`). Those take the names of
+one table shared by every Ourea SDK (ensemble-weather-spec BEHAVIOR.md 3.0);
+the struct tag keeps the JSON name, so `encoding/json` maps them both ways,
+and each field's doc comment starts with its JSON name. The GeoJSON routes
+(`AlertOutlines`, `AvalancheZones`) are passed through untouched: an
+avalanche zone's `Properties.ForecastURL` stays `forecast_url`.
+
+| Type | JSON field | Go field |
+|---|---|---|
+| `ForecastResponse` | `forecast` | `Series` |
+| `ForecastResponse` | `elevation_forecasts` | `Elevations` |
+| `CurrentResponse` | `current` | `Now` |
+| `CurrentConditions` | `condition` | `Code` |
+| `CurrentConditions` | `condition_text` | `Text` |
+| `CurrentConditions` | `condition_icon` | `Icon` |
+| `CurrentStation` | `station_id` | `ID` |
+| `ProbabilityResult` | `probability` | `Value` |
+| `ProbabilityThresholds` | `daily_precipitation_probability` | `DailyPrecipitation` |
+| `ProbabilityThresholds` | `daily_precipitation_occurrence_probability` | `DailyPrecipitationOccurrence` |
+| `ProbabilityThresholds` | `daily_snow_probability` | `DailySnow` |
+| `WindowTotal` | `window_start_hours` | `StartHours` |
+| `WindowTotal` | `window_end_hours` | `EndHours` |
+| `ModelMembers` | `members` | `Items` |
+| `MemberForecast` | `member_id` | `ID` |
+| `MemberPlume` | `members` | `Pool` |
+| `AlertsResponse` | `alerts` | `Items` |
+| `AlertsResponse` | `alert_count` | `Count` |
+| `LocationsResponse` | `locations` | `Items` |
+| `NearbyLocationsResponse` | `location` | `Origin` |
+| `NearbyLocationsResponse` | `locations` | `Items` |
+| `NearbyPointResponse` | `locations` | `Items` |
+| `RunsResponse` | `runs` | `Items` |
+| `ElevationForecast` | `elevation` | `Height` |
+| `ElevationSummary` | `elevation` | `Height` |
+| `SnowTrendElevation` | `elevation` | `Height` |
+| `CatalogElevation` | `elevation_m` | `HeightM` |
+| `CatalogStation` | `source_station_id` | `SourceID` |
+| `CatalogStation` | `station_status` | `Status` |
+| `CatalogStation` | `station_url` | `URL` |
+| `CatalogNearbyStation` | `station_status` | `Status` |
+| `CatalogTemplate` | `template_variant` | `Variant` |
+| `CatalogContentEntry` | `resolved_locale` | `Locale` |
+| `SensorObservation` | `observation_time` | `ObservedAt` |
+| `PassHour` | `snow_level_above_pass` | `SnowLevelMargin` |
+| `PassStatusSegment` | `status` | `State` |
+| `PassStatusSegment` | `status_text` | `Text` |
+| `AvalancheForecast` | `forecast_url` | `URL` |
+| `SeasonTotal` | `total` | `Amount` |
+| `SnowTrendDay` | `snow` | `Amount` |
+| `Error` | `error` | `Code` |
+
+## Every route
+
+| Method on `*Client` | Route | Access |
+|---|---|---|
+| `Forecast`, `GetPointForecast` | a named location's forecast; one at coordinates | anonymous; Pro |
+| `Current`, `GetPointCurrent` | current conditions (a mountain pass also gets `Pass`) | anonymous; Pro |
+| `Alerts`, `GetPointAlerts` | active alerts | anonymous; Pro |
+| `Nearby`, `GetPointNearby` | nearby locations | anonymous |
+| `Search` | search by name, optionally `Sort` by a metric and `Near` a point | anonymous |
+| `Explore`, `AllExplore` | places ranked by a metric (`ExploreSnow5d`, `ExploreBaseDepth`, `ExploreSeasonPrecip`, ...) | anonymous |
+| `Season` | observed season-to-date precipitation and snowfall | anonymous |
+| `SnowTrend` | each recent run's daily snowfall, run by run | Plus or Pro |
+| `Snowpack`, `SnowpackPlume` | the modelled snowpack and its snow-depth plume (beta) | anonymous |
+| `AlertOutlines`, `AvalancheZones` | GeoJSON for maps: alert outlines, avalanche zones and ratings | anonymous |
+| `Locations`, `AllLocations` | every location, or a state's, paged | anonymous |
+| `CatalogLocations`, `AllCatalogLocations`, `CatalogLocation`, `CatalogStations`, `AllCatalogStations`, `CatalogStation` | the catalog | anonymous |
+| `Runs`, `Composition`, `Attribution` | served runs, the blend's models and members, data credits | anonymous |
+
+`Members: ew.MembersAsPlume` on a forecast returns the plume view: columns
+in `f.Series.Plume`, ready to draw. `ew.MembersOn` puts each hour's members
+in `TimeSeriesPoint.Members`.
+
 ## More examples
 
 Each is a complete program; run it with `go run ./examples/<name>`.
@@ -157,6 +235,7 @@ Each is a complete program; run it with `go run ./examples/<name>`.
 | [current-and-alerts](examples/current-and-alerts/main.go) | current conditions and active alerts for a location |
 | [error-handling](examples/error-handling/main.go) | catching an out-of-coverage error by its code; reading rate-limit state |
 | [units](examples/units/main.go) | the same forecast in metric and imperial |
+| [snow-report](examples/snow-report/main.go) | `Explore` rankings, a season to date, and the run-by-run snow trend |
 
 On Go 1.23+, list calls also come as iterators that follow the cursor:
 
@@ -219,7 +298,7 @@ API version.
 ## Supported versions
 
 Go 1.22 and the two latest Go releases, all tested in CI. The iterators
-(`AllLocations`, `AllCatalogLocations`, `AllCatalogStations`) need Go 1.23;
+(`AllLocations`, `AllCatalogLocations`, `AllCatalogStations`, `AllExplore`) need Go 1.23;
 the page calls work on every supported version. The SDK uses only the
 standard library.
 

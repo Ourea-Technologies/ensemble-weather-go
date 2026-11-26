@@ -21,10 +21,10 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		if len(f.Forecast.Timeseries) == 0 {
+		if len(f.Series.Timeseries) == 0 {
 			continue
 		}
-		first := f.Forecast.Timeseries[0].Ensemble
+		first := f.Series.Timeseries[0].Ensemble
 		temp, _ := first.Temperature.Median()
 		precip, _ := first.Precipitation.Median()
 		fmt.Printf("%-8s temperature median %.1f %s, precipitation median %.2f %s\n", f.Units,

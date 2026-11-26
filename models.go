@@ -45,6 +45,30 @@ type ActiveAlert struct {
 	Onset     *time.Time     `json:"onset,omitempty"`
 	Expires   time.Time      `json:"expires"`
 	Ends      *time.Time     `json:"ends,omitempty"`
+	// Sent is when NWS issued this message.
+	Sent *time.Time `json:"sent,omitempty"`
+	// MessageType is the CAP message type ("alert", "update" or "cancel"). It
+	// is not a sign of a new event: dedupe on EventKey.
+	MessageType string `json:"message_type,omitempty"`
+	// References are the ids of the messages this one replaces.
+	References []string `json:"references,omitempty"`
+	SenderName string   `json:"sender_name,omitempty"`
+	// AreaDesc is the places this message covers, as NWS words them.
+	AreaDesc string `json:"area_desc,omitempty"`
+	// Description is the full NWS text, unedited.
+	Description string `json:"description,omitempty"`
+	// Instruction is what NWS says to do, unedited; empty when NWS gives none.
+	Instruction string `json:"instruction,omitempty"`
+	// SourceURL is the NWS forecast page for this location.
+	SourceURL string `json:"source_url,omitempty"`
+	// EventKey is the stable identity of this event: every message in one
+	// event has the same key, so to notify once per event, dedupe on it.
+	// Treat it as opaque.
+	EventKey string `json:"event_key,omitempty"`
+	// VTECAction is the message's VTEC action, lower case ("new", "con",
+	// "ext", "exa", "exb", "upg", "can", "exp", "cor", "rou"); "can", "exp"
+	// and "upg" end the event. Empty when NWS sent no VTEC.
+	VTECAction string `json:"vtec_action,omitempty"`
 }
 
 // CurrentResponse is current conditions at a location or point.
@@ -56,8 +80,8 @@ type CurrentResponse struct {
 	AlertsAsOf  time.Time           `json:"alerts_as_of"`
 	SensorCount int                 `json:"sensor_count"`
 	Sensors     []SensorObservation `json:"sensors"`
-	// Current is nil when no served hour is near the request time.
-	Current               *CurrentConditions `json:"current"`
+	// Now (JSON `current`) is nil when no served hour is near the request time.
+	Now                   *CurrentConditions `json:"current"`
 	AsOf                  time.Time          `json:"as_of"`
 	ModelRunInitializedAt *time.Time         `json:"model_run_initialized_at"`
 	// NowcastHours is present only with IncludeNowcastHours.
@@ -65,88 +89,111 @@ type CurrentResponse struct {
 	Units              Units               `json:"units"`
 	Attribution        ResponseAttribution `json:"attribution"`
 	NowcastUnavailable []NowcastSource     `json:"nowcast_unavailable,omitempty"`
+	// Summary is the place summary, written by the server from served values
+	// only, so every client shows the same words; nil when no cycle is servable.
+	Summary *PlaceSummary `json:"summary,omitempty"`
+	// Pass is the mountain pass forecast at the pass's own point and
+	// elevation, present only for a [LocationMountainPass] location.
+	Pass *PassForecast `json:"pass,omitempty"`
 }
 
 // CurrentConditions is "right now": a view of one served forecast hour.
 type CurrentConditions struct {
-	Time                     time.Time       `json:"time"`
-	Temperature              float64         `json:"temperature"`
-	FeelsLike                *float64        `json:"feels_like,omitempty"`
-	Condition                Condition       `json:"condition"`
-	ConditionText            string          `json:"condition_text"`
-	ConditionIcon            ConditionIcon   `json:"condition_icon"`
-	WindSpeed                float64         `json:"wind_speed"`
-	WindGust                 *float64        `json:"wind_gust,omitempty"`
-	WindDirection            float64         `json:"wind_direction"`
-	RelativeHumidity         *float64        `json:"relative_humidity,omitempty"`
-	Dewpoint                 *float64        `json:"dewpoint,omitempty"`
-	PrecipitationProbability *float64        `json:"precipitation_probability,omitempty"`
-	Source                   CurrentSource   `json:"source"`
-	Station                  *CurrentStation `json:"station,omitempty"`
+	Time        time.Time `json:"time"`
+	Temperature float64   `json:"temperature"`
+	FeelsLike   *float64  `json:"feels_like,omitempty"`
+	// Code (JSON `condition`) is the hour's condition code; switch on it.
+	Code Condition `json:"condition"`
+	// Text (JSON `condition_text`) is Code's display text; show it, never parse it.
+	Text string `json:"condition_text"`
+	// Icon (JSON `condition_icon`) is the icon hint for Code.
+	Icon ConditionIcon `json:"condition_icon"`
+	// Measured reports that the radar measured precipitation in the hour in
+	// progress: show "Measured" in place of the chance.
+	Measured                 bool     `json:"measured"`
+	WindSpeed                float64  `json:"wind_speed"`
+	WindGust                 *float64 `json:"wind_gust,omitempty"`
+	WindDirection            float64  `json:"wind_direction"`
+	RelativeHumidity         *float64 `json:"relative_humidity,omitempty"`
+	Dewpoint                 *float64 `json:"dewpoint,omitempty"`
+	PrecipitationProbability *float64 `json:"precipitation_probability,omitempty"`
+	// CloudCover is the hour's mean cloud cover, percent (0-100); nil where
+	// the hour serves none.
+	CloudCover *float64        `json:"cloud_cover,omitempty"`
+	Source     CurrentSource   `json:"source"`
+	Station    *CurrentStation `json:"station,omitempty"`
 }
 
 // CurrentStation is the surface station that anchored the current hour.
 type CurrentStation struct {
-	// StationID is the station's id, as in [SensorObservation.StationID].
-	StationID       string    `json:"station_id"`
+	// ID (JSON `station_id`) is the station's id in its network, as in
+	// [SensorObservation.StationID].
+	ID              string    `json:"station_id"`
 	Name            string    `json:"name"`
 	ObservationTime time.Time `json:"observation_time"`
+	// Calm reports a calm reading (0 wind speed). A calm reading has no
+	// bearing, so the served wind direction is then the forecast's, not the
+	// station's.
+	Calm bool `json:"calm"`
 }
 
 // SensorObservation is one sensor's latest reading, in the request's units.
 type SensorObservation struct {
-	StationID          string    `json:"station_id"`
-	Name               string    `json:"name"`
-	Source             string    `json:"source"`
-	ObservationTime    time.Time `json:"observation_time"`
-	Temperature        *float64  `json:"temperature,omitempty"`
-	Dewpoint           *float64  `json:"dewpoint,omitempty"`
-	RelativeHumidity   *float64  `json:"relative_humidity,omitempty"`
-	WindSpeed          *float64  `json:"wind_speed,omitempty"`
-	WindGust           *float64  `json:"wind_gust,omitempty"`
-	WindDirection      *float64  `json:"wind_direction,omitempty"`
-	Pressure           *float64  `json:"pressure,omitempty"`
-	Precipitation      *float64  `json:"precipitation,omitempty"`
-	PrecipitationRate  *float64  `json:"precipitation_rate,omitempty"`
-	Reflectivity       *float64  `json:"reflectivity,omitempty"`
-	PavementTemp       *float64  `json:"pavement_temp,omitempty"`
-	SubsurfaceTemp     *float64  `json:"subsurface_temp,omitempty"`
-	Visibility         *float64  `json:"visibility,omitempty"`
-	CloudCover         *float64  `json:"cloud_cover,omitempty"`
-	CeilingHeight      *float64  `json:"ceiling_height,omitempty"`
-	SnowDepth          *float64  `json:"snow_depth,omitempty"`
-	SWE                *float64  `json:"swe,omitempty"`
-	SWEPercentOfMedian *float64  `json:"swe_percent_of_median,omitempty"`
-	Snowfall           *float64  `json:"snowfall,omitempty"`
-	SolarRadiation     *float64  `json:"solar_radiation,omitempty"`
-	PavementCondition  *string   `json:"pavement_condition,omitempty"`
+	StationID string `json:"station_id"`
+	Name      string `json:"name"`
+	Source    string `json:"source"`
+	// ObservedAt (JSON `observation_time`) is when the reading was taken.
+	ObservedAt time.Time `json:"observation_time"`
+	// DistanceKm is the straight-line distance from the location to the
+	// sensor (at most 25 km).
+	DistanceKm float64 `json:"distance_km"`
+	// ElevationDiff is the sensor's elevation minus the location's, in the
+	// request's length units; nil when the station has no registry elevation.
+	ElevationDiff      *float64 `json:"elevation_diff,omitempty"`
+	Temperature        *float64 `json:"temperature,omitempty"`
+	Dewpoint           *float64 `json:"dewpoint,omitempty"`
+	RelativeHumidity   *float64 `json:"relative_humidity,omitempty"`
+	WindSpeed          *float64 `json:"wind_speed,omitempty"`
+	WindGust           *float64 `json:"wind_gust,omitempty"`
+	WindDirection      *float64 `json:"wind_direction,omitempty"`
+	Pressure           *float64 `json:"pressure,omitempty"`
+	Precipitation      *float64 `json:"precipitation,omitempty"`
+	PrecipitationRate  *float64 `json:"precipitation_rate,omitempty"`
+	Reflectivity       *float64 `json:"reflectivity,omitempty"`
+	PavementTemp       *float64 `json:"pavement_temp,omitempty"`
+	SubsurfaceTemp     *float64 `json:"subsurface_temp,omitempty"`
+	Visibility         *float64 `json:"visibility,omitempty"`
+	CloudCover         *float64 `json:"cloud_cover,omitempty"`
+	CeilingHeight      *float64 `json:"ceiling_height,omitempty"`
+	SnowDepth          *float64 `json:"snow_depth,omitempty"`
+	SWE                *float64 `json:"swe,omitempty"`
+	SWEPercentOfMedian *float64 `json:"swe_percent_of_median,omitempty"`
+	Snowfall           *float64 `json:"snowfall,omitempty"`
+	SolarRadiation     *float64 `json:"solar_radiation,omitempty"`
+	PavementCondition  *string  `json:"pavement_condition,omitempty"`
 }
 
 // AlertsResponse lists the alerts in effect at a location or point.
 type AlertsResponse struct {
 	ResponseMeta `json:"-"`
 
-	Location    LocationRef         `json:"location"`
-	AlertCount  int                 `json:"alert_count"`
-	AsOf        time.Time           `json:"as_of"`
-	Alerts      []ActiveAlert       `json:"alerts"`
+	Location LocationRef `json:"location"`
+	// Count (JSON `alert_count`) is the number of alerts in Items.
+	Count int       `json:"alert_count"`
+	AsOf  time.Time `json:"as_of"`
+	// Items (JSON `alerts`) are the alerts in effect.
+	Items       []ActiveAlert       `json:"alerts"`
 	Attribution ResponseAttribution `json:"attribution"`
 }
 
 // LocationSummary is a named location in a list.
 type LocationSummary struct {
 	LocationRef
-	County      string           `json:"county"`
-	Description *string          `json:"description,omitempty"`
-	Elevations  []NamedElevation `json:"elevations,omitempty"`
-}
-
-// NamedElevation is one of a location's forecast elevations, in the
-// request's units (m or ft).
-type NamedElevation struct {
-	Name      string  `json:"name"`
-	Elevation float64 `json:"elevation"`
-	Default   bool    `json:"default,omitempty"`
+	County      string  `json:"county"`
+	Description *string `json:"description,omitempty"`
+	// Elevations are the location's named elevation points, in the request's
+	// length units, the primary (Default) first.
+	Elevations []ElevationSummary `json:"elevations,omitempty"`
 }
 
 // NearbyLocation is a location near another, with its distance.
@@ -159,30 +206,34 @@ type NearbyLocation struct {
 type NearbyLocationsResponse struct {
 	ResponseMeta `json:"-"`
 
-	Location  LocationSummary  `json:"location"`
-	RadiusKm  float64          `json:"radius_km"`
-	Count     int              `json:"count"`
-	Locations []NearbyLocation `json:"locations"`
+	// Origin (JSON `location`) is the location the search started from.
+	Origin   LocationSummary `json:"location"`
+	RadiusKm float64         `json:"radius_km"`
+	Count    int             `json:"count"`
+	// Items (JSON `locations`) are the neighbours, nearest first.
+	Items []NearbyLocation `json:"locations"`
 }
 
 // NearbyPointResponse lists the locations near a point.
 type NearbyPointResponse struct {
 	ResponseMeta `json:"-"`
 
-	Lat       float64          `json:"lat"`
-	Lon       float64          `json:"lon"`
-	RadiusKm  float64          `json:"radius_km"`
-	Count     int              `json:"count"`
-	Locations []NearbyLocation `json:"locations"`
+	Lat      float64 `json:"lat"`
+	Lon      float64 `json:"lon"`
+	RadiusKm float64 `json:"radius_km"`
+	Count    int     `json:"count"`
+	// Items (JSON `locations`) are the neighbours, nearest first.
+	Items []NearbyLocation `json:"locations"`
 }
 
 // LocationsResponse is one page of a state's (or every state's) locations.
 type LocationsResponse struct {
 	ResponseMeta `json:"-"`
 
-	State     string            `json:"state"`
-	Count     int               `json:"count"`
-	Locations []LocationSummary `json:"locations"`
+	State string `json:"state"`
+	Count int    `json:"count"`
+	// Items (JSON `locations`) are this page's locations.
+	Items []LocationSummary `json:"locations"`
 	// NextCursor is nil on the last page.
 	NextCursor *string `json:"next_cursor"`
 }
@@ -195,11 +246,17 @@ type SearchLocationsResponse struct {
 	Count int         `json:"count"`
 }
 
-// SearchHit is one location search result. Key is its "state/slug".
+// SearchHit is one location search result.
 type SearchHit struct {
+	// Key is the hit's state and slug joined by a dash, such as
+	// "or-mt-hood-meadows". It is not the "state/slug" form the location
+	// methods take: use [LocationRef.Key] for that.
 	Key string `json:"key"`
 	LocationRef
 	County string `json:"county"`
+	// Explore is the place's value as [Client.Explore] ranks it, present only
+	// with a metric [SearchParams.Sort]; nil where the place has none.
+	Explore *ExploreValue `json:"explore,omitempty"`
 }
 
 // CatalogLocationPage is one page of the location catalog.
@@ -255,28 +312,31 @@ type CatalogLocationDetail struct {
 // CatalogStation is an observation station's catalog record.
 type CatalogStation struct {
 	LocationRef
-	County                 *string         `json:"county,omitempty"`
-	Country                string          `json:"country,omitempty"`
-	Aliases                []string        `json:"aliases,omitempty"`
-	Network                StationNetwork  `json:"network,omitempty"`
-	SourceStationID        string          `json:"source_station_id,omitempty"`
-	ElevationMslM          *float64        `json:"elevation_msl_m,omitempty"`
-	SensorHeightAglM       *float64        `json:"sensor_height_agl_m,omitempty"`
-	SensorCapabilities     []string        `json:"sensor_capabilities,omitempty"`
-	StationStatus          StationStatus   `json:"station_status,omitempty"`
+	County  *string        `json:"county,omitempty"`
+	Country string         `json:"country,omitempty"`
+	Aliases []string       `json:"aliases,omitempty"`
+	Network StationNetwork `json:"network,omitempty"`
+	// SourceID (JSON `source_station_id`) is the station's id in its network.
+	SourceID           string   `json:"source_station_id,omitempty"`
+	ElevationMslM      *float64 `json:"elevation_msl_m,omitempty"`
+	SensorHeightAglM   *float64 `json:"sensor_height_agl_m,omitempty"`
+	SensorCapabilities []string `json:"sensor_capabilities,omitempty"`
+	// Status (JSON `station_status`) is the station's status.
+	Status                 StationStatus   `json:"station_status,omitempty"`
 	LastReportAt           *time.Time      `json:"last_report_at,omitempty"`
 	LastReportSummary      json.RawMessage `json:"last_report_summary,omitempty"`
 	InstallDate            *string         `json:"install_date,omitempty"`
 	DecommissionDate       *string         `json:"decommission_date,omitempty"`
 	UpdateFrequencyMinutes *int            `json:"update_frequency_minutes,omitempty"`
-	StationURL             *string         `json:"station_url,omitempty"`
-	DataURL                *string         `json:"data_url,omitempty"`
-	DescriptionShort       *string         `json:"description_short,omitempty"`
-	DescriptionLong        *string         `json:"description_long,omitempty"`
-	MetaTitle              *string         `json:"meta_title,omitempty"`
-	MetaDescription        *string         `json:"meta_description,omitempty"`
-	Tags                   []string        `json:"tags,omitempty"`
-	IsFeatured             bool            `json:"is_featured,omitempty"`
+	// URL (JSON `station_url`) is the station's page at its network.
+	URL              *string  `json:"station_url,omitempty"`
+	DataURL          *string  `json:"data_url,omitempty"`
+	DescriptionShort *string  `json:"description_short,omitempty"`
+	DescriptionLong  *string  `json:"description_long,omitempty"`
+	MetaTitle        *string  `json:"meta_title,omitempty"`
+	MetaDescription  *string  `json:"meta_description,omitempty"`
+	Tags             []string `json:"tags,omitempty"`
+	IsFeatured       bool     `json:"is_featured,omitempty"`
 }
 
 // CatalogStationDetail is a station's full catalog record.
@@ -289,6 +349,9 @@ type CatalogStationDetail struct {
 	PrimaryLocation *CatalogPrimaryLocation `json:"primary_location,omitempty"`
 	Template        *CatalogTemplate        `json:"template,omitempty"`
 	Content         []CatalogContentEntry   `json:"content,omitempty"`
+	// Indexable reports whether search engines should index the station's
+	// page; serve a page that is not with noindex.
+	Indexable bool `json:"indexable"`
 }
 
 // CatalogPrimaryLocation is the location a station primarily serves.
@@ -303,8 +366,12 @@ type CatalogPrimaryLocation struct {
 
 // CatalogElevation is one of a catalog location's forecast elevations.
 type CatalogElevation struct {
-	Label       string   `json:"label"`
-	ElevationM  float64  `json:"elevation_m"`
+	Label string `json:"label"`
+	// DisplayName is what the place is called, for display; empty where the
+	// catalog has no name for the point (show Label).
+	DisplayName *string `json:"display_name,omitempty"`
+	// HeightM (JSON `elevation_m`) is the elevation in metres.
+	HeightM     float64  `json:"elevation_m"`
 	LatOverride *float64 `json:"lat_override,omitempty"`
 	LonOverride *float64 `json:"lon_override,omitempty"`
 	IsDefault   bool     `json:"is_default"`
@@ -331,21 +398,23 @@ type CatalogWebcam struct {
 
 // CatalogNearbyStation is an observation station near a catalog location.
 type CatalogNearbyStation struct {
-	Slug           string         `json:"slug"`
-	Name           string         `json:"name"`
-	Network        StationNetwork `json:"network"`
-	StationStatus  StationStatus  `json:"station_status"`
-	DistanceKm     *float64       `json:"distance_km,omitempty"`
-	ElevationDiffM *float64       `json:"elevation_diff_m,omitempty"`
-	IsPrimary      bool           `json:"is_primary"`
+	Slug    string         `json:"slug"`
+	Name    string         `json:"name"`
+	Network StationNetwork `json:"network"`
+	// Status (JSON `station_status`) is the station's status.
+	Status         StationStatus `json:"station_status"`
+	DistanceKm     *float64      `json:"distance_km,omitempty"`
+	ElevationDiffM *float64      `json:"elevation_diff_m,omitempty"`
+	IsPrimary      bool          `json:"is_primary"`
 }
 
 // CatalogTemplate is the page template of a catalog record.
 type CatalogTemplate struct {
-	ID              string            `json:"id"`
-	LocationType    *LocationType     `json:"location_type"`
-	TemplateVariant *TemplateVariant  `json:"template_variant"`
-	Spec            []TemplateSection `json:"spec"`
+	ID           string        `json:"id"`
+	LocationType *LocationType `json:"location_type"`
+	// Variant (JSON `template_variant`) is the template's variant.
+	Variant *TemplateVariant  `json:"template_variant"`
+	Spec    []TemplateSection `json:"spec"`
 }
 
 // TemplateSection is one section of a catalog page template.
@@ -363,8 +432,9 @@ type CatalogContentEntry struct {
 	Body           json.RawMessage `json:"body"`
 	Slot           string          `json:"slot"`
 	DisplayOrder   int             `json:"display_order"`
-	ResolvedLocale string          `json:"resolved_locale"`
-	UpdatedAt      time.Time       `json:"updated_at"`
+	// Locale (JSON `resolved_locale`) is the locale the entry was resolved in.
+	Locale    string    `json:"resolved_locale"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // RunsResponse lists the available model runs.
@@ -372,9 +442,10 @@ type RunsResponse struct {
 	ResponseMeta `json:"-"`
 
 	// Served is the run forecasts are currently served from, or nil.
-	Served *ServedRun     `json:"served"`
-	Runs   []AvailableRun `json:"runs"`
-	Count  int            `json:"count"`
+	Served *ServedRun `json:"served"`
+	// Items (JSON `runs`) are the runs, newest first.
+	Items []AvailableRun `json:"runs"`
+	Count int            `json:"count"`
 	// NextCursor is nil on the last page.
 	NextCursor *string `json:"next_cursor"`
 }

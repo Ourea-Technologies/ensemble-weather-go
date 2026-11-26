@@ -69,7 +69,10 @@ func TestQueryCanonicalForm(t *testing.T) {
 		{"nil params", nil, ""},
 		{"defaults omitted", &ForecastParams{Units: UnitsMetric, MaxHours: 24, Daily: Ptr(true), Hourly: Ptr(true), Nowcast: Ptr(true), FeelsLike: []string{"nws"}}, ""},
 		{"false booleans sent", &ForecastParams{Daily: Ptr(false), Nowcast: Ptr(false)}, "daily=false&nowcast=false"},
-		{"lists are percent-encoded", &ForecastParams{Elevations: []string{"base", "summit"}}, "elevations=base%2Csummit"},
+		{"list commas literal, items encoded", &ForecastParams{Elevations: []string{"summit", "base", "a,b c"}}, "elevations=a%2Cb%20c,base,summit"},
+		{"members on", &ForecastParams{Members: MembersOn}, "members=true"},
+		{"members plume", &ForecastParams{Members: MembersAsPlume}, "members=plume"},
+		{"members off omitted", &ForecastParams{Members: MembersOff}, ""},
 		{"run in UTC RFC 3339", &ForecastParams{Run: time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)}, "run=2026-10-14T12%3A00%3A00Z"},
 		{"kelvin units", &ForecastParams{Units: UnitsKelvin, MaxDays: 3}, "max_days=3&units=kelvin"},
 		{"totals literal", &ForecastParams{Totals: []Total{{Snowfall, Hours(72)}, {Precipitation, HoursBetween(24, 48)}, {Snowfall, Hours(72)}}}, "totals=precipitation:24-48h,snowfall:72h"},
@@ -122,7 +125,7 @@ func TestCatalogListsCanonical(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := rt.last().URL.RawQuery, "capability=air_temp%2Cswe&network=raws%2Csnotel&status=active"; got != want {
+	if got, want := rt.last().URL.RawQuery, "capability=air_temp,swe&network=raws,snotel&status=active"; got != want {
 		t.Errorf("query = %q, want %q", got, want)
 	}
 }
@@ -232,7 +235,7 @@ func TestForecastIncludeCanonical(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := rt.last().URL.RawQuery, "include=mslp%2Cskin_temperature"; got != want {
+	if got, want := rt.last().URL.RawQuery, "include=mslp,skin_temperature"; got != want {
 		t.Errorf("query = %q, want %q", got, want)
 	}
 }
@@ -247,5 +250,47 @@ func TestCoordinateLocationHasNoKey(t *testing.T) {
 	}
 	if got := (LocationRef{State: "or", Slug: "mt-hood-meadows"}).Key(); got != "or/mt-hood-meadows" {
 		t.Errorf("Key() = %q", got)
+	}
+}
+
+func TestMembersModeRefusesOtherStrings(t *testing.T) {
+	c, rt, _ := testClient(t, okForecast)
+	for _, m := range []MembersMode{"yes", "Plume", "1"} {
+		if _, err := c.Forecast(context.Background(), "or/x", &ForecastParams{Members: m}); !errors.Is(err, ErrUsage) {
+			t.Errorf("Members %q: err = %v, want usage", m, err)
+		}
+	}
+	if len(rt.reqs) != 0 {
+		t.Errorf("usage errors sent %d requests", len(rt.reqs))
+	}
+}
+
+func TestNearAndBBoxAreChecked(t *testing.T) {
+	c, rt, _ := testClient(t, func(int, *http.Request) (*http.Response, error) {
+		return respond(200, `{"items":[],"count":0}`), nil
+	})
+	ctx := context.Background()
+	for _, n := range []Point{{Lat: 91, Lon: 0}, {Lat: 0, Lon: -181}, {Lat: 1, Lon: 2, ElevationM: Ptr(3.0)}} {
+		if _, err := c.Search(ctx, "hood", &SearchParams{Near: &n}); !errors.Is(err, ErrUsage) {
+			t.Errorf("near %+v: err = %v, want usage", n, err)
+		}
+		if _, err := c.Explore(ctx, ExploreSnow5d, &ExploreParams{Near: &n}); !errors.Is(err, ErrUsage) {
+			t.Errorf("explore near %+v: err = %v, want usage", n, err)
+		}
+	}
+	for _, b := range []BBox{{West: -116, South: 41, East: -125, North: 49}, {West: -125, South: 49, East: -116, North: 41}, {West: -190, South: 0, East: 0, North: 1}} {
+		if _, err := c.AlertOutlines(ctx, &AlertOutlinesParams{BBox: &b}); !errors.Is(err, ErrUsage) {
+			t.Errorf("bbox %+v: err = %v, want usage", b, err)
+		}
+	}
+	if _, err := c.Explore(ctx, "", nil); !errors.Is(err, ErrUsage) {
+		t.Errorf("explore without a metric: err = %v, want usage", err)
+	}
+	if len(rt.reqs) != 0 {
+		t.Fatalf("usage errors sent %d requests", len(rt.reqs))
+	}
+	_, _ = c.Search(ctx, "hood", &SearchParams{State: "OR", Near: &Point{Lat: 45.5, Lon: -121}, RadiusKm: 100, Sort: "relevance", Order: OrderAsc})
+	if got, want := rt.last().URL.RawQuery, "near=45.5,-121&order=asc&q=hood&state=or"; got != want {
+		t.Errorf("search query = %q, want %q", got, want)
 	}
 }

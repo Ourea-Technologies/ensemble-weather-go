@@ -191,8 +191,8 @@ func loadVectors(t *testing.T) []string {
 // fails to load can never silently disappear.
 func TestVectors(t *testing.T) {
 	files := loadVectors(t)
-	if len(files) != 43 {
-		t.Errorf("found %d vectors, want 43", len(files))
+	if len(files) != 58 {
+		t.Errorf("found %d vectors, want 58", len(files))
 	}
 	for _, file := range files {
 		raw, err := os.ReadFile(file)
@@ -445,6 +445,28 @@ func (a *args) done() error {
 	return nil
 }
 
+// strings reads a list argument, or a single string as a one-item list.
+func (a *args) strings(name string) []string {
+	var raw json.RawMessage
+	if !a.get(name, &raw) {
+		return nil
+	}
+	var one string
+	if json.Unmarshal(raw, &one) == nil {
+		return []string{one}
+	}
+	var list []string
+	if err := json.Unmarshal(raw, &list); err != nil && a.err == nil {
+		a.err = fmt.Errorf("%w: arg %s: %w", errUnmapped, name, err)
+	}
+	return list
+}
+
+type vectorNear struct {
+	Lat float64 `json:"lat"`
+	Lon float64 `json:"lon"`
+}
+
 type vectorThreshold struct {
 	Value float64 `json:"value"`
 	Unit  Unit    `json:"unit"`
@@ -500,8 +522,24 @@ func runCall(ctx context.Context, c *Client, call vectorCall) (any, []string, er
 		a.get("max_hours", &p.MaxHours)
 		a.get("max_days", &p.MaxDays)
 		a.get("include_past", &p.IncludePast)
-		a.get("members", &p.Members)
+		var members json.RawMessage
+		if a.get("members", &members) {
+			switch string(members) {
+			case "true":
+				p.Members = MembersOn
+			case "false":
+				p.Members = MembersOff
+			default:
+				var mode string
+				_ = json.Unmarshal(members, &mode)
+				p.Members = MembersMode(mode)
+			}
+		}
 		a.get("models", &p.Models)
+		p.Elevations = a.strings("elevations")
+		p.Sources = a.strings("sources")
+		p.ExcludeSources = a.strings("exclude_sources")
+		p.Include = a.strings("include")
 		if a.get("daily", &b) {
 			p.Daily = Ptr(b)
 		}
@@ -538,6 +576,14 @@ func runCall(ctx context.Context, c *Client, call vectorCall) (any, []string, er
 	}
 	var iterate bool
 	a.get("iterate", &iterate)
+	near := func() *Point {
+		var n *vectorNear
+		if !a.get("near", &n) || n == nil {
+			return nil
+		}
+		return &Point{Lat: n.Lat, Lon: n.Lon}
+	}
+	result := func(r any, err error) (any, []string, error) { return r, nil, err }
 
 	switch call.Operation {
 	case "getLocationForecast":
@@ -556,20 +602,139 @@ func runCall(ctx context.Context, c *Client, call vectorCall) (any, []string, er
 		return r, nil, err
 	case "searchLocations":
 		var q string
+		p := &SearchParams{}
 		a.get("q", &q)
+		a.get("sort", &p.Sort)
+		a.get("order", &p.Order)
+		a.get("radius_km", &p.RadiusKm)
+		p.Near = near()
 		if err := a.done(); err != nil {
 			return nil, nil, err
 		}
-		r, err := c.Search(ctx, q, nil)
-		return r, nil, err
+		return result(c.Search(ctx, q, p))
 	case "getCatalogLocation":
+		var slug string
+		a.get("slug", &slug)
+		p := &CatalogDetailParams{Include: a.strings("include")}
+		if err := a.done(); err != nil {
+			return nil, nil, err
+		}
+		return result(c.CatalogLocation(ctx, slug, p))
+	case "getCatalogStation":
 		var slug string
 		a.get("slug", &slug)
 		if err := a.done(); err != nil {
 			return nil, nil, err
 		}
-		r, err := c.CatalogLocation(ctx, slug, nil)
-		return r, nil, err
+		return result(c.CatalogStation(ctx, slug, nil))
+	case "getCurrentConditions":
+		loc := location()
+		if err := a.done(); err != nil {
+			return nil, nil, err
+		}
+		return result(c.Current(ctx, loc, nil))
+	case "getLocationAlerts":
+		loc := location()
+		if err := a.done(); err != nil {
+			return nil, nil, err
+		}
+		return result(c.Alerts(ctx, loc))
+	case "getLocations":
+		p := &LocationsParams{}
+		a.get("state", &p.State)
+		a.get("limit", &p.Limit)
+		if err := a.done(); err != nil {
+			return nil, nil, err
+		}
+		return result(c.Locations(ctx, p))
+	case "getNearbyLocations":
+		loc := location()
+		if err := a.done(); err != nil {
+			return nil, nil, err
+		}
+		return result(c.Nearby(ctx, loc, nil))
+	case "getNearbyByCoordinates":
+		pt := point()
+		if err := a.done(); err != nil {
+			return nil, nil, err
+		}
+		return result(c.GetPointNearby(ctx, pt, nil))
+	case "getAvailableRuns":
+		var limit int
+		a.get("limit", &limit)
+		if err := a.done(); err != nil {
+			return nil, nil, err
+		}
+		return result(c.Runs(ctx, limit))
+	case "explore":
+		var metric ExploreMetric
+		var points string
+		p := &ExploreParams{}
+		a.get("metric", &metric)
+		a.get("order", &p.Order)
+		a.get("type", &p.Type)
+		a.get("state", &p.State)
+		p.Near = near()
+		a.get("radius_km", &p.RadiusKm)
+		a.get("elevation_min", &p.ElevationMin)
+		a.get("elevation_max", &p.ElevationMax)
+		if a.get("points", &points) {
+			p.AllPoints = points == "all"
+		}
+		a.get("limit", &p.Limit)
+		a.get("cursor", &p.Cursor)
+		a.get("units", &p.Units)
+		if err := a.done(); err != nil {
+			return nil, nil, err
+		}
+		return result(c.Explore(ctx, metric, p))
+	case "getComposition":
+		if err := a.done(); err != nil {
+			return nil, nil, err
+		}
+		return result(c.Composition(ctx))
+	case "getLocationSeason":
+		loc := location()
+		p := &SeasonParams{Include: a.strings("include")}
+		a.get("water_year", &p.WaterYear)
+		if err := a.done(); err != nil {
+			return nil, nil, err
+		}
+		return result(c.Season(ctx, loc, p))
+	case "getLocationSnowTrend":
+		loc := location()
+		p := &SnowTrendParams{}
+		a.get("elevation", &p.Elevation)
+		a.get("units", &p.Units)
+		if err := a.done(); err != nil {
+			return nil, nil, err
+		}
+		return result(c.SnowTrend(ctx, loc, p))
+	case "getLocationSnowpack":
+		loc := location()
+		if err := a.done(); err != nil {
+			return nil, nil, err
+		}
+		return result(c.Snowpack(ctx, loc, nil))
+	case "getLocationSnowpackPlume":
+		loc := location()
+		if err := a.done(); err != nil {
+			return nil, nil, err
+		}
+		return result(c.SnowpackPlume(ctx, loc, nil))
+	case "getAlertOutlines":
+		p := &AlertOutlinesParams{}
+		a.get("classes", &p.Classes)
+		a.get("bbox", &p.BBox)
+		if err := a.done(); err != nil {
+			return nil, nil, err
+		}
+		return result(c.AlertOutlines(ctx, p))
+	case "getAvalancheZones":
+		if err := a.done(); err != nil {
+			return nil, nil, err
+		}
+		return result(c.AvalancheZones(ctx))
 	case "getAttribution":
 		if err := a.done(); err != nil {
 			return nil, nil, err
@@ -636,6 +801,14 @@ func checkPath(t *testing.T, result any, path string, raw json.RawMessage) {
 			t.Errorf("%s = %v, want %v", path, g, w)
 		}
 	case string:
+		if ts, ok := got.Interface().(time.Time); ok {
+			// A timestamp matches when it is the same instant (BEHAVIOR 13).
+			wt, err := time.Parse(time.RFC3339, w)
+			if err != nil || !ts.Equal(wt) {
+				t.Errorf("%s = %v, want the instant %q", path, ts, w)
+			}
+			return
+		}
 		if got.Kind() != reflect.String || got.String() != w {
 			t.Errorf("%s = %v, want %q", path, got.Interface(), w)
 		}
@@ -695,10 +868,14 @@ func lookup(v reflect.Value, path string) (reflect.Value, bool) {
 	return v, true
 }
 
-// field finds a struct field by its JSON name (or its snake_case Go name for
-// untagged fields such as ResponseMeta's), searching embedded structs.
+// field finds a struct field by its SDK name (BEHAVIOR 3.0), searching
+// embedded structs. The SDK name is the Go field's name in snake_case: the
+// wire name, or the renamed one for the stuttering fields, so a path that
+// names a renamed field by its wire name is not found. Case and underscores
+// are ignored, so "station_id" matches StationID and "rate_limit" RateLimit.
 func field(v reflect.Value, name string) (reflect.Value, bool) {
 	t := v.Type()
+	want := squash(name)
 	for i := 0; i < t.NumField(); i++ {
 		sf := t.Field(i)
 		if sf.Anonymous {
@@ -707,27 +884,11 @@ func field(v reflect.Value, name string) (reflect.Value, bool) {
 			}
 			continue
 		}
-		tag, _, _ := strings.Cut(sf.Tag.Get("json"), ",")
-		if tag == "" || tag == "-" {
-			tag = snake(sf.Name)
-		}
-		if tag == name {
+		if sf.IsExported() && squash(sf.Name) == want {
 			return v.Field(i), true
 		}
 	}
 	return reflect.Value{}, false
 }
 
-func snake(s string) string {
-	var b strings.Builder
-	for i, r := range s {
-		if 'A' <= r && r <= 'Z' {
-			if i > 0 {
-				b.WriteByte('_')
-			}
-			r += 'a' - 'A'
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
-}
+func squash(s string) string { return strings.ToLower(strings.ReplaceAll(s, "_", "")) }

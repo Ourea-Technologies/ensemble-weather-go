@@ -21,7 +21,7 @@ func Example() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	for _, hour := range f.Forecast.Timeseries {
+	for _, hour := range f.Series.Timeseries {
 		if r, ok := hour.Ensemble.Temperature.Range80(); ok {
 			fmt.Println(hour.ValidTime, r, f.Units.For(ensembleweather.Temperature).Symbol())
 		}
@@ -52,12 +52,12 @@ func ExampleChance() {
 		log.Fatal(err)
 	}
 	for _, p := range f.Probabilities { // in the order asked
-		if p.Probability == nil {
+		if p.Value == nil {
 			fmt.Println(p.Variable, "not covered")
 			continue
 		}
 		fmt.Printf("%s %s %g %s over hours %d-%d: %.0f%% of %d members\n", p.Variable, p.Op, p.Threshold,
-			p.ThresholdUnit.Symbol(), p.WindowStartHours, p.WindowEndHours, *p.Probability*100, p.Members)
+			p.ThresholdUnit.Symbol(), p.WindowStartHours, p.WindowEndHours, *p.Value*100, p.Members)
 	}
 }
 
